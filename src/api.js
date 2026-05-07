@@ -162,7 +162,8 @@ app.post('/nutrition/parse', async (req, res) => {
   if (!text) return res.status(400).json({ error: 'Campo "text" é obrigatório.' });
   try {
     const entry = await parseNutritionFromText(text);
-    await saveFoodEntry(user_id || 1, entry.alimento, entry.kcal, entry.proteina, entry.carboidratos, entry.gordura);
+    const result = await saveFoodEntry(user_id || 1, entry.alimento, entry.kcal, entry.proteina, entry.carboidratos, entry.gordura);
+    entry.id = result.lastID; // ← adiciona o id gerado à entry
     res.json({ entry });
   } catch (error) {
     res.status(500).json({ error: error.message || error });
