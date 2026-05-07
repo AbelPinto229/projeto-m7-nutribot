@@ -9,7 +9,7 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'delete_food_entry',
-      description: 'Elimina uma refeição do diário do utilizador pelo nome. Usa quando o utilizador pede para apagar, eliminar ou remover uma refeição específica.',
+      description: 'Elimina uma refeição do diário pelo nome. Usa APENAS quando o utilizador usa explicitamente palavras como "elimina", "apaga", "remove" ou "cancela" seguidas do nome de um alimento. NUNCA chamar quando o utilizador descreve o que comeu com palavras como "comi", "almocei", "jantei", "bebi", "comer".',
       parameters: {
         type: 'object',
         properties: {
@@ -26,7 +26,7 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'delete_last_food_entry',
-      description: 'Elimina a última refeição registada no diário. Usa quando o utilizador diz "elimina a última refeição" ou similar.',
+      description: 'Elimina a última refeição registada no diário. Usa APENAS quando o utilizador diz explicitamente "elimina a última", "apaga a última", "remove a última refeição" ou similar. NUNCA usar quando o utilizador descreve comida com palavras como "comi", "almocei", "jantei".',
       parameters: {
         type: 'object',
         properties: {},
@@ -38,7 +38,7 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'delete_all_food_entries',
-      description: 'Elimina todas as refeições do diário de hoje. Usa apenas quando o utilizador pede explicitamente para apagar tudo.',
+      description: 'Elimina todas as refeições do diário de hoje. Usa APENAS quando o utilizador pede explicitamente para apagar tudo, como "elimina tudo", "apaga todas as refeições". NUNCA usar quando o utilizador descreve o que comeu.',
       parameters: {
         type: 'object',
         properties: {},
@@ -51,6 +51,11 @@ const TOOLS = [
 function createSystemPrompt(user = null) {
   const base = `És o NutriBot, um assistente de nutrição direto, honesto e exigente. 
 Responde sempre em português de Portugal. Nunca sejas condescendente — diz a verdade.
+
+REGRA CRÍTICA SOBRE FUNÇÕES:
+- As funções de eliminação SÓ devem ser chamadas quando o utilizador usa explicitamente palavras como "elimina", "apaga", "remove" ou "cancela".
+- Se o utilizador descreve o que comeu (ex: "comi X", "almocei X", "jantei X"), NUNCA chames funções de eliminação — responde SEMPRE com análise nutricional.
+- "comi", "almocei", "jantei", "bebi" = análise nutricional, NUNCA eliminação.
 
 Tens acesso a funções para gerir o diário alimentar do utilizador:
 - delete_food_entry(nome) → elimina uma refeição pelo nome
@@ -135,8 +140,8 @@ Escreve EXATAMENTE assim na primeira linha: MOOD:happy (ou ok, stressed, angry)
 Depois deixa uma linha em branco. Depois continua a resposta.
 
 PASSO 2 — Lista de alimentos com macros:
-**Alimento (quantidade):** X kcal | P: Xg | C: Xg | G: Xg
-**Total:** X kcal | P: Xg | C: Xg | G: Xg
+Alimento (quantidade): X kcal | P: Xg | C: Xg | G: Xg
+Total: X kcal | P: Xg | C: Xg | G: Xg
 
 PASSO 3 — Comparação com meta por refeição:
 ✅ se dentro de ±20% | ⚠️ se 60–80% | ❌ se abaixo de 60% ou contradiz objetivo
@@ -144,13 +149,13 @@ PASSO 3 — Comparação com meta por refeição:
 PASSO 4 — Julgamento DIRETO (2–4 frases):
 - Sê honesto e específico. Usa os números reais das metas.
 - Exemplo para 1 ovo + morango, objetivo ganhar massa:
-  "⚠️ Esta refeição tem apenas 6g de proteína, mas a tua meta é ${metaPorRefeicao.prot}g por refeição. Com ${n} refeições por dia, precisas de ${protDiaria}g total — e esta mal arranha a superfície."
+  "Esta refeição tem apenas 6g de proteína, mas a tua meta é ${metaPorRefeicao.prot}g por refeição. Com ${n} refeições por dia, precisas de ${protDiaria}g total."
 
 PASSO 5 — Sugestão concreta (sempre):
-- "Adiciona 2 ovos ou 150g de frango para atingir a meta de proteína."
+- Adiciona 2 ovos ou 150g de frango para atingir a meta de proteína.
 
 REGRAS ADICIONAIS:
-- Se objetivo PERDER PESO e refeição com muitos hidratos simples/açúcar → ❌ MOOD:angry
+- Se objetivo PERDER PESO e refeição com muitos hidratos simples/açúcar → MOOD:angry
 - Se objetivo GANHAR MASSA e proteína < 60% da meta → MOOD:stressed ou MOOD:angry
 - NUNCA digas "boa refeição leve" quando é claramente insuficiente
 - Sê direto como um nutricionista sério`;
