@@ -1,392 +1,465 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NutriBot</title>
-  <link rel="stylesheet" href="nutribot.css" />
-</head>
-<body>
-
-  <!-- Modal de boas-vindas -->
-  <div class="modal-overlay" id="modalOverlay">
-    <div class="modal">
-      <h2>👋 Bem-vindo ao NutriBot</h2>
-      <p>Diz-nos um pouco sobre ti para personalizarmos as tuas recomendações nutricionais.</p>
-      <div class="form-group">
-        <label>Nome</label>
-        <input type="text" id="inputNome" placeholder="O teu nome" />
-      </div>
-      <div class="form-row">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NutriBot</title>
+    <link rel="stylesheet" href="nutribot.css" />
+  </head>
+  <body>
+    <!-- Modal de boas-vindas -->
+    <div class="modal-overlay" id="modalOverlay">
+      <div class="modal">
+        <h2>👋 Bem-vindo ao NutriBot</h2>
+        <p>
+          Diz-nos um pouco sobre ti para personalizarmos as tuas recomendações
+          nutricionais.
+        </p>
         <div class="form-group">
-          <label>Idade</label>
-          <input type="number" id="inputIdade" placeholder="25" min="10" max="100" />
+          <label>Nome</label>
+          <input type="text" id="inputNome" placeholder="O teu nome" />
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Idade</label>
+            <input
+              type="number"
+              id="inputIdade"
+              placeholder="25"
+              min="10"
+              max="100"
+            />
+          </div>
+          <div class="form-group">
+            <label>Peso (kg)</label>
+            <input
+              type="number"
+              id="inputPeso"
+              placeholder="70"
+              min="30"
+              max="300"
+            />
+          </div>
+          <div class="form-group">
+            <label>Altura (cm)</label>
+            <input
+              type="number"
+              id="inputAltura"
+              placeholder="175"
+              min="100"
+              max="250"
+            />
+          </div>
         </div>
         <div class="form-group">
-          <label>Peso (kg)</label>
-          <input type="number" id="inputPeso" placeholder="70" min="30" max="300" />
+          <label>Objetivo</label>
+          <select id="inputObjetivo">
+            <option value="">Escolhe o teu objetivo</option>
+            <option value="perder peso">Perder peso</option>
+            <option value="ganhar massa muscular">Ganhar massa muscular</option>
+            <option value="manutenção">Manutenção</option>
+            <option value="melhorar saúde geral">Melhorar saúde geral</option>
+          </select>
         </div>
-        <div class="form-group">
-          <label>Altura (cm)</label>
-          <input type="number" id="inputAltura" placeholder="175" min="100" max="250" />
-        </div>
+        <button class="btn-primary" id="btnGuardarUser">Começar →</button>
       </div>
-      <div class="form-group">
-        <label>Objetivo</label>
-        <select id="inputObjetivo">
-          <option value="">Escolhe o teu objetivo</option>
-          <option value="perder peso">Perder peso</option>
-          <option value="ganhar massa muscular">Ganhar massa muscular</option>
-          <option value="manutenção">Manutenção</option>
-          <option value="melhorar saúde geral">Melhorar saúde geral</option>
-        </select>
-      </div>
-      <button class="btn-primary" id="btnGuardarUser">Começar →</button>
     </div>
-  </div>
 
-  <!-- Header -->
-  <header>
-    <div class="logo-dot"></div>
-    <h1>Nutri<span>Bot</span></h1>
-    <div class="header-right">
-      <span class="user-badge" id="userBadge">...</span>
-      <span class="theme-label" id="themeLabel">neutro</span>
+    <!-- Header -->
+    <header>
+      <div class="logo-dot"></div>
+      <h1>Nutri<span>Bot</span></h1>
+      <div class="header-right">
+        <span class="user-badge" id="userBadge">...</span>
+        <span class="theme-label" id="themeLabel">Na paz do senhor 🙏</span>
+      </div>
+    </header>
+
+    <!-- Layout principal -->
+    <div class="layout">
+      <!-- Chat -->
+      <section class="chat-section">
+        <div id="messages"></div>
+        <div class="input-area">
+          <textarea
+            id="userInput"
+            rows="1"
+            placeholder="Descreve a tua refeição..."
+          ></textarea>
+          <button class="btn btn-mic" id="micBtn" title="Falar">🎤</button>
+          <button class="btn btn-send" id="sendBtn">Enviar</button>
+        </div>
+      </section>
+
+      <!-- Diário -->
+      <aside class="diary-section">
+        <div class="diary-header">
+          Diário de Hoje
+          <span class="diary-total" id="totalKcal">0 kcal</span>
+        </div>
+        <div id="diaryList">
+          <div class="empty-diary">
+            Ainda sem refeições.<br />Descreve o que comeste!
+          </div>
+        </div>
+      </aside>
     </div>
-  </header>
 
-  <!-- Layout principal -->
-  <div class="layout">
+    <script>
+      let currentUser = null;
 
-    <!-- Chat -->
-    <section class="chat-section">
-      <div id="messages"></div>
-      <div class="input-area">
-        <textarea id="userInput" rows="1" placeholder="Descreve a tua refeição..."></textarea>
-        <button class="btn btn-mic" id="micBtn" title="Falar">🎤</button>
-        <button class="btn btn-send" id="sendBtn">Enviar</button>
-      </div>
-    </section>
+      const savedUserId = localStorage.getItem("nutribot_user_id");
+      if (savedUserId) {
+        fetch(`/users/${savedUserId}`)
+          .then((r) => r.json())
+          .then(({ user }) => {
+            if (user) {
+              currentUser = user;
+              document.getElementById("modalOverlay").classList.add("hidden");
+              document.getElementById("userBadge").textContent = user.nome;
+              loadChatHistory();
+              loadDiary();
+            }
+          })
+          .catch(() => {});
+      }
 
-    <!-- Diário -->
-    <aside class="diary-section">
-      <div class="diary-header">
-        Diário de Hoje
-        <span class="diary-total" id="totalKcal">0 kcal</span>
-      </div>
-      <div id="diaryList">
-        <div class="empty-diary">Ainda sem refeições.<br/>Descreve o que comeste!</div>
-      </div>
-    </aside>
+      document
+        .getElementById("btnGuardarUser")
+        .addEventListener("click", async () => {
+          const nome = document.getElementById("inputNome").value.trim();
+          const idade = parseInt(document.getElementById("inputIdade").value);
+          const peso = parseFloat(document.getElementById("inputPeso").value);
+          const altura = parseFloat(
+            document.getElementById("inputAltura").value,
+          );
+          const objetivo = document.getElementById("inputObjetivo").value;
 
-  </div>
+          if (!nome || !idade || !peso || !altura || !objetivo) {
+            alert("Preenche todos os campos.");
+            return;
+          }
 
-  <script>
-    let currentUser = null;
-
-    const savedUserId = localStorage.getItem('nutribot_user_id');
-    if (savedUserId) {
-      fetch(`/users/${savedUserId}`)
-        .then(r => r.json())
-        .then(({ user }) => {
-          if (user) {
+          try {
+            const res = await fetch("/users", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ nome, idade, peso, altura, objetivo }),
+            });
+            const { user } = await res.json();
             currentUser = user;
-            document.getElementById('modalOverlay').classList.add('hidden');
-            document.getElementById('userBadge').textContent = user.nome;
-            loadChatHistory();
+            localStorage.setItem("nutribot_user_id", user.id);
+            document.getElementById("modalOverlay").classList.add("hidden");
+            document.getElementById("userBadge").textContent = user.nome;
             loadDiary();
+          } catch (err) {
+            alert("Erro ao guardar. Tenta novamente.");
           }
-        })
-        .catch(() => {});
-    }
-
-    document.getElementById('btnGuardarUser').addEventListener('click', async () => {
-      const nome     = document.getElementById('inputNome').value.trim();
-      const idade    = parseInt(document.getElementById('inputIdade').value);
-      const peso     = parseFloat(document.getElementById('inputPeso').value);
-      const altura   = parseFloat(document.getElementById('inputAltura').value);
-      const objetivo = document.getElementById('inputObjetivo').value;
-
-      if (!nome || !idade || !peso || !altura || !objetivo) {
-        alert('Preenche todos os campos.');
-        return;
-      }
-
-      try {
-        const res = await fetch('/users', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ nome, idade, peso, altura, objetivo })
         });
-        const { user } = await res.json();
-        currentUser = user;
-        localStorage.setItem('nutribot_user_id', user.id);
-        document.getElementById('modalOverlay').classList.add('hidden');
-        document.getElementById('userBadge').textContent = user.nome;
-        loadDiary();
-      } catch (err) {
-        alert('Erro ao guardar. Tenta novamente.');
+
+      // ── Mood ──
+      function applyMood(mood) {
+        const themeLabel = document.getElementById("themeLabel");
+        const map = {
+          happy: { theme: "theme-happy", label: "Estás lá! 💪" },
+          ok: { theme: "theme-ok", label: "Não está mauzito! 👌" },
+          stressed: {
+            theme: "theme-stressed",
+            label: "Epa tu me digas mais nada... 😮‍💨",
+          },
+          angry: { theme: "theme-angry", label: "Desisto de ti. 🤦" },
+        };
+        const m = map[mood] ?? { theme: "", label: "neutro" };
+        document.body.className = m.theme;
+        themeLabel.className = `theme-label mood-${mood}`;
+        themeLabel.textContent = m.label;
       }
-    });
 
-    // ── Mood ──
-    function applyMood(mood) {
-      const themeLabel = document.getElementById('themeLabel');
-      const map = {
-        happy:    { theme: 'theme-happy',    label: 'happy' },
-        ok:       { theme: 'theme-ok',       label: 'ok' },
-        stressed: { theme: 'theme-stressed', label: 'stressed' },
-        angry:    { theme: 'theme-angry',    label: 'angry' },
-      };
-      const m = map[mood] ?? { theme: '', label: 'neutro' };
-      document.body.className = m.theme;
-      themeLabel.className = `theme-label mood-${mood}`;
-      themeLabel.textContent = m.label;
-    }
+      // ── Converte texto simples em HTML com parágrafos ──
+      function renderTexto(texto) {
+        return texto.replace(/\n\n/g, "<br><br>").replace(/\n/g, "<br>");
+      }
 
-    // ── Converte texto simples em HTML com parágrafos ──
-    function renderTexto(texto) {
-      return texto
-        .replace(/\n\n/g, '<br><br>')
-        .replace(/\n/g, '<br>');
-    }
+      // ── Speech-to-Text ──
+      const micBtn = document.getElementById("micBtn");
+      const SpeechRecognition =
+        window.SpeechRecognition || window.webkitSpeechRecognition;
+      let recognition = null;
 
-    // ── Speech-to-Text ──
-    const micBtn = document.getElementById('micBtn');
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    let recognition = null;
-
-    if (SpeechRecognition) {
-      recognition = new SpeechRecognition();
-      recognition.lang = 'pt-PT';
-      recognition.continuous = false;
-      recognition.interimResults = false;
-      recognition.onresult = (e) => {
-        document.getElementById('userInput').value = e.results[0][0].transcript;
-        micBtn.classList.remove('active');
-      };
-      recognition.onend = () => micBtn.classList.remove('active');
-    } else {
-      micBtn.style.display = 'none';
-    }
-
-    micBtn.addEventListener('click', () => {
-      if (!recognition) return;
-      if (micBtn.classList.contains('active')) {
-        recognition.stop();
-        micBtn.classList.remove('active');
+      if (SpeechRecognition) {
+        recognition = new SpeechRecognition();
+        recognition.lang = "pt-PT";
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.onresult = (e) => {
+          document.getElementById("userInput").value =
+            e.results[0][0].transcript;
+          micBtn.classList.remove("active");
+        };
+        recognition.onend = () => micBtn.classList.remove("active");
       } else {
-        recognition.start();
-        micBtn.classList.add('active');
+        micBtn.style.display = "none";
       }
-    });
 
-    // ── Chat ──
-    const messagesEl = document.getElementById('messages');
-    const userInput  = document.getElementById('userInput');
-    const sendBtn    = document.getElementById('sendBtn');
+      micBtn.addEventListener("click", () => {
+        if (!recognition) return;
+        if (micBtn.classList.contains("active")) {
+          recognition.stop();
+          micBtn.classList.remove("active");
+        } else {
+          recognition.start();
+          micBtn.classList.add("active");
+        }
+      });
 
-    userInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-    });
-    sendBtn.addEventListener('click', sendMessage);
+      // ── Chat ──
+      const messagesEl = document.getElementById("messages");
+      const userInput = document.getElementById("userInput");
+      const sendBtn = document.getElementById("sendBtn");
 
-    function addMessage(role, text) {
-      const msg    = document.createElement('div');
-      msg.className = `msg ${role}`;
+      userInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage();
+        }
+      });
+      sendBtn.addEventListener("click", sendMessage);
 
-      const avatar  = document.createElement('div');
-      avatar.className = 'avatar';
-      avatar.textContent = role === 'user' ? (currentUser?.nome?.[0] || 'U') : '🥗';
+      function addMessage(role, text) {
+        const msg = document.createElement("div");
+        msg.className = `msg ${role}`;
 
-      const bubble  = document.createElement('div');
-      bubble.className = 'bubble';
-      bubble.innerHTML = renderTexto(text);
+        const avatar = document.createElement("div");
+        avatar.className = "avatar";
+        avatar.textContent =
+          role === "user" ? currentUser?.nome?.[0] || "U" : "🥗";
 
-      msg.appendChild(avatar);
-      msg.appendChild(bubble);
-      messagesEl.appendChild(msg);
-      messagesEl.scrollTop = messagesEl.scrollHeight;
-      return bubble;
-    }
+        const bubble = document.createElement("div");
+        bubble.className = "bubble";
+        bubble.innerHTML = renderTexto(text);
 
-    function addBotStreamBubble() {
-      const msg = document.createElement('div');
-      msg.className = 'msg bot';
-
-      const avatar = document.createElement('div');
-      avatar.className = 'avatar';
-      avatar.textContent = '🥗';
-
-      const bubble = document.createElement('div');
-      bubble.className = 'bubble';
-
-      const cursor = document.createElement('span');
-      cursor.className = 'cursor';
-      bubble.appendChild(cursor);
-
-      msg.appendChild(avatar);
-      msg.appendChild(bubble);
-      messagesEl.appendChild(msg);
-      messagesEl.scrollTop = messagesEl.scrollHeight;
-      return { bubble, cursor };
-    }
-
-    // ── Histórico ──
-    async function loadChatHistory() {
-      if (!currentUser) return;
-      try {
-        const res = await fetch(`/chat/history?user_id=${currentUser.id}`);
-        const { history } = await res.json();
-        if (!history || history.length === 0) return;
-
-        const divider = document.createElement('div');
-        divider.className = 'history-divider';
-        divider.textContent = '— últimas mensagens —';
-        messagesEl.appendChild(divider);
-
-        history.forEach(row => {
-          addMessage('user', row.user_message);
-          const clean = row.ai_response.replace(/^MOOD:(happy|ok|stressed|angry)\n\n?/, '');
-          addMessage('bot', clean);
-        });
-
+        msg.appendChild(avatar);
+        msg.appendChild(bubble);
+        messagesEl.appendChild(msg);
         messagesEl.scrollTop = messagesEl.scrollHeight;
-      } catch (_) {}
-    }
+        return bubble;
+      }
 
-    // ── Enviar mensagem ──
-    async function sendMessage() {
-      const text = userInput.value.trim();
-      if (!text) return;
-      userInput.value = '';
-      sendBtn.disabled = true;
-      addMessage('user', text);
+      function addBotStreamBubble() {
+        const msg = document.createElement("div");
+        msg.className = "msg bot";
 
-      const { bubble, cursor } = addBotStreamBubble();
-      let fullResponse = '';
-      let wasToolCall = false;
-      let pendingEventType = null;
+        const avatar = document.createElement("div");
+        avatar.className = "avatar";
+        avatar.textContent = "🥗";
 
-      try {
-        const userId = currentUser?.id || '';
-        const res = await fetch(`/chat?message=${encodeURIComponent(text)}&user_id=${userId}`);
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
+        const bubble = document.createElement("div");
+        bubble.className = "bubble";
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+        const cursor = document.createElement("span");
+        cursor.className = "cursor";
+        bubble.appendChild(cursor);
 
-          const raw = decoder.decode(value, { stream: true });
-          const lines = raw.split('\n');
+        msg.appendChild(avatar);
+        msg.appendChild(bubble);
+        messagesEl.appendChild(msg);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+        return { bubble, cursor };
+      }
 
-          for (const line of lines) {
-            if (line.startsWith('event: ')) {
-              pendingEventType = line.slice(7).trim();
-              continue;
-            }
+      // ── Histórico ──
+      async function loadChatHistory() {
+        if (!currentUser) return;
+        try {
+          const res = await fetch(`/chat/history?user_id=${currentUser.id}`);
+          const { history } = await res.json();
+          if (!history || history.length === 0) return;
 
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6).trim();
-              if (!data) continue;
+          const divider = document.createElement("div");
+          divider.className = "history-divider";
+          divider.textContent = "— últimas mensagens —";
+          messagesEl.appendChild(divider);
 
-              if (pendingEventType === 'mood') {
-                try { applyMood(JSON.parse(data)); } catch (_) {}
-                pendingEventType = null;
+          history.forEach((row) => {
+            addMessage("user", row.user_message);
+            const clean = row.ai_response.replace(
+              /^MOOD:(happy|ok|stressed|angry)\n\n?/,
+              "",
+            );
+            addMessage("bot", clean);
+          });
+
+          messagesEl.scrollTop = messagesEl.scrollHeight;
+        } catch (_) {}
+      }
+
+      // ── Enviar mensagem ──
+      async function sendMessage() {
+        const text = userInput.value.trim();
+        if (!text) return;
+        userInput.value = "";
+        sendBtn.disabled = true;
+        addMessage("user", text);
+
+        const { bubble, cursor } = addBotStreamBubble();
+        let fullResponse = "";
+        let wasToolCall = false;
+        let pendingEventType = null;
+
+        try {
+          const userId = currentUser?.id || "";
+          const res = await fetch(
+            `/chat?message=${encodeURIComponent(text)}&user_id=${userId}`,
+          );
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const raw = decoder.decode(value, { stream: true });
+            const lines = raw.split("\n");
+
+            for (const line of lines) {
+              if (line.startsWith("event: ")) {
+                pendingEventType = line.slice(7).trim();
                 continue;
               }
 
-              if (pendingEventType === 'tool_action') {
-                wasToolCall = true;
-                try {
-                  const action = JSON.parse(data);
-                  if (action.action === 'delete_all') {
-                    document.querySelectorAll('.diary-item').forEach(el => el.remove());
-                    const empty = document.createElement('div');
-                    empty.className = 'empty-diary';
-                    empty.innerHTML = 'Ainda sem refeições.<br/>Descreve o que comeste!';
-                    document.getElementById('diaryList').appendChild(empty);
-                    refreshTotal();
-                  } else if (action.action === 'delete_one') {
-                    let itemEl = document.querySelector(`.diary-item[data-id="${action.id}"]`);
-                    if (!itemEl && action.deleted?.alimento) {
-                      const name = action.deleted.alimento.toLowerCase();
-                      document.querySelectorAll('.diary-item').forEach(el => {
-                        const elName = el.querySelector('.diary-item-name')?.textContent?.toLowerCase();
-                        if (elName && (elName.includes(name) || name.includes(elName))) itemEl = el;
-                      });
+              if (line.startsWith("data: ")) {
+                const data = line.slice(6).trim();
+                if (!data) continue;
+
+                if (pendingEventType === "mood") {
+                  try {
+                    applyMood(JSON.parse(data));
+                  } catch (_) {}
+                  pendingEventType = null;
+                  continue;
+                }
+
+                if (pendingEventType === "tool_action") {
+                  wasToolCall = true;
+                  try {
+                    const action = JSON.parse(data);
+                    if (action.action === "delete_all") {
+                      document
+                        .querySelectorAll(".diary-item")
+                        .forEach((el) => el.remove());
+                      const empty = document.createElement("div");
+                      empty.className = "empty-diary";
+                      empty.innerHTML =
+                        "Ainda sem refeições.<br/>Descreve o que comeste!";
+                      document.getElementById("diaryList").appendChild(empty);
+                      refreshTotal();
+                    } else if (action.action === "delete_one") {
+                      let itemEl = document.querySelector(
+                        `.diary-item[data-id="${action.id}"]`,
+                      );
+                      if (!itemEl && action.deleted?.alimento) {
+                        const name = action.deleted.alimento.toLowerCase();
+                        document
+                          .querySelectorAll(".diary-item")
+                          .forEach((el) => {
+                            const elName = el
+                              .querySelector(".diary-item-name")
+                              ?.textContent?.toLowerCase();
+                            if (
+                              elName &&
+                              (elName.includes(name) || name.includes(elName))
+                            )
+                              itemEl = el;
+                          });
+                      }
+                      if (itemEl) {
+                        itemEl.remove();
+                        refreshTotal();
+                      }
                     }
-                    if (itemEl) { itemEl.remove(); refreshTotal(); }
-                  }
-                } catch (_) {}
+                  } catch (_) {}
+                  pendingEventType = null;
+                  continue;
+                }
+
+                if (data === "[DONE]") {
+                  pendingEventType = null;
+                  break;
+                }
                 pendingEventType = null;
-                continue;
+
+                try {
+                  const chunk = JSON.parse(data);
+                  fullResponse += chunk;
+                  bubble.innerHTML = renderTexto(fullResponse);
+                  bubble.appendChild(cursor);
+                  messagesEl.scrollTop = messagesEl.scrollHeight;
+                } catch (_) {}
               }
-
-              if (data === '[DONE]') { pendingEventType = null; break; }
-              pendingEventType = null;
-
-              try {
-                const chunk = JSON.parse(data);
-                fullResponse += chunk;
-                bubble.innerHTML = renderTexto(fullResponse);
-                bubble.appendChild(cursor);
-                messagesEl.scrollTop = messagesEl.scrollHeight;
-              } catch (_) {}
             }
           }
+
+          cursor.remove();
+
+          if (!wasToolCall && looksLikeFood(text)) {
+            await parseAndSaveFood(text);
+          }
+        } catch (err) {
+          bubble.textContent = "Erro ao contactar o servidor.";
+          cursor.remove();
         }
 
-        cursor.remove();
-
-        if (!wasToolCall && looksLikeFood(text)) {
-          await parseAndSaveFood(text);
-        }
-
-      } catch (err) {
-        bubble.textContent = 'Erro ao contactar o servidor.';
-        cursor.remove();
+        sendBtn.disabled = false;
       }
 
-      sendBtn.disabled = false;
-    }
+      function looksLikeFood(text) {
+        const words = [
+          "comi",
+          "comer",
+          "almocei",
+          "jantei",
+          "pequeno-almoço",
+          "refeição",
+          "almoço",
+          "jantar",
+          "café",
+          "snack",
+          "lanche",
+          "bebi",
+        ];
+        return words.some((w) => text.toLowerCase().includes(w));
+      }
 
-    function looksLikeFood(text) {
-      const words = ['comi', 'comer', 'almocei', 'jantei', 'pequeno-almoço', 'refeição', 'almoço', 'jantar', 'café', 'snack', 'lanche', 'bebi'];
-      return words.some(w => text.toLowerCase().includes(w));
-    }
+      async function parseAndSaveFood(text) {
+        try {
+          const res = await fetch("/nutrition/parse", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text, user_id: currentUser?.id || 1 }),
+          });
+          if (!res.ok) return;
+          const { entry } = await res.json();
+          if (entry) addDiaryItem(entry);
+        } catch (_) {}
+      }
 
-    async function parseAndSaveFood(text) {
-      try {
-        const res = await fetch('/nutrition/parse', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, user_id: currentUser?.id || 1 })
-        });
-        if (!res.ok) return;
-        const { entry } = await res.json();
-        if (entry) addDiaryItem(entry);
-      } catch (_) {}
-    }
+      async function deleteEntry(id, itemEl) {
+        try {
+          await fetch(`/nutrition/diary/${id}`, { method: "DELETE" });
+          itemEl.remove();
+          refreshTotal();
+        } catch (_) {}
+      }
 
-    async function deleteEntry(id, itemEl) {
-      try {
-        await fetch(`/nutrition/diary/${id}`, { method: 'DELETE' });
-        itemEl.remove();
-        refreshTotal();
-      } catch (_) {}
-    }
+      function addDiaryItem(entry) {
+        const emptyEl = document.querySelector(".empty-diary");
+        if (emptyEl) emptyEl.remove();
 
-    function addDiaryItem(entry) {
-      const emptyEl = document.querySelector('.empty-diary');
-      if (emptyEl) emptyEl.remove();
+        const item = document.createElement("div");
+        item.className = "diary-item";
+        if (entry.id) item.dataset.id = entry.id;
 
-      const item = document.createElement('div');
-      item.className = 'diary-item';
-      if (entry.id) item.dataset.id = entry.id;
-
-      item.innerHTML = `
+        item.innerHTML = `
         <div class="diary-item-top">
           <span class="diary-item-name">${entry.alimento}</span>
           <div style="display:flex;gap:0.4rem;align-items:center">
@@ -397,32 +470,36 @@
         <div class="diary-item-macros">P: ${entry.proteina} · C: ${entry.carboidratos} · G: ${entry.gordura}</div>
       `;
 
-      item.querySelector('.btn-delete').addEventListener('click', () => {
-        if (entry.id) deleteEntry(entry.id, item);
-        else { item.remove(); refreshTotal(); }
-      });
+        item.querySelector(".btn-delete").addEventListener("click", () => {
+          if (entry.id) deleteEntry(entry.id, item);
+          else {
+            item.remove();
+            refreshTotal();
+          }
+        });
 
-      document.getElementById('diaryList').prepend(item);
-      refreshTotal();
-    }
+        document.getElementById("diaryList").prepend(item);
+        refreshTotal();
+      }
 
-    function refreshTotal() {
-      let total = 0;
-      document.querySelectorAll('.diary-item-kcal').forEach(el => {
-        const val = parseInt(el.textContent);
-        if (!isNaN(val)) total += val;
-      });
-      document.getElementById('totalKcal').textContent = `${total} kcal`;
-    }
+      function refreshTotal() {
+        let total = 0;
+        document.querySelectorAll(".diary-item-kcal").forEach((el) => {
+          const val = parseInt(el.textContent);
+          if (!isNaN(val)) total += val;
+        });
+        document.getElementById("totalKcal").textContent = `${total} kcal`;
+      }
 
-    async function loadDiary() {
-      if (!currentUser) return;
-      try {
-        const res = await fetch(`/nutrition/diary?user_id=${currentUser.id}`);
-        const { entries } = await res.json();
-        if (entries && entries.length > 0) entries.forEach(e => addDiaryItem(e));
-      } catch (_) {}
-    }
-  </script>
-</body>
+      async function loadDiary() {
+        if (!currentUser) return;
+        try {
+          const res = await fetch(`/nutrition/diary?user_id=${currentUser.id}`);
+          const { entries } = await res.json();
+          if (entries && entries.length > 0)
+            entries.forEach((e) => addDiaryItem(e));
+        } catch (_) {}
+      }
+    </script>
+  </body>
 </html>
