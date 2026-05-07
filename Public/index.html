@@ -144,6 +144,13 @@
       themeLabel.textContent = m.label;
     }
 
+    // ── Converte texto simples em HTML com parágrafos ──
+    function renderTexto(texto) {
+      return texto
+        .replace(/\n\n/g, '<br><br>')
+        .replace(/\n/g, '<br>');
+    }
+
     // ── Speech-to-Text ──
     const micBtn = document.getElementById('micBtn');
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -194,7 +201,7 @@
 
       const bubble  = document.createElement('div');
       bubble.className = 'bubble';
-      bubble.textContent = text;
+      bubble.innerHTML = renderTexto(text);
 
       msg.appendChild(avatar);
       msg.appendChild(bubble);
@@ -323,7 +330,7 @@
               try {
                 const chunk = JSON.parse(data);
                 fullResponse += chunk;
-                bubble.textContent = fullResponse;
+                bubble.innerHTML = renderTexto(fullResponse);
                 bubble.appendChild(cursor);
                 messagesEl.scrollTop = messagesEl.scrollHeight;
               } catch (_) {}
@@ -418,4 +425,4 @@
     }
   </script>
 </body>
-</html> 
+</html>
