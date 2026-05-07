@@ -15,7 +15,6 @@ Refeição: ${text}`;
   const response = await generateJson(prompt);
   const raw = response.text?.trim();
   if (!raw) throw new Error('Resposta inválida.');
-
   const clean = raw.replace(/```json|```/g, '').trim();
   return JSON.parse(clean);
 }

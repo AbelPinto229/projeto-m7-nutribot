@@ -14,8 +14,20 @@ const db = new sqlite.Database(databasePath, (err) => {
 db.serialize(() => {
   db.run('PRAGMA journal_mode = WAL');
   db.run(
+    `CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nome TEXT NOT NULL,
+      idade INTEGER NOT NULL,
+      peso REAL NOT NULL,
+      altura REAL NOT NULL,
+      objetivo TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`
+  );
+  db.run(
     `CREATE TABLE IF NOT EXISTS food_diary (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
       alimento TEXT NOT NULL,
       kcal INTEGER NOT NULL,
       proteina TEXT NOT NULL,
@@ -29,11 +41,8 @@ db.serialize(() => {
 function run(sql, params = []) {
   return new Promise((resolve, reject) => {
     db.run(sql, params, function (err) {
-      if (err) {
-        reject(err);
-      } else {
-        resolve({ lastID: this.lastID, changes: this.changes });
-      }
+      if (err) reject(err);
+      else resolve({ lastID: this.lastID, changes: this.changes });
     });
   });
 }
@@ -41,29 +50,47 @@ function run(sql, params = []) {
 function all(sql, params = []) {
   return new Promise((resolve, reject) => {
     db.all(sql, params, (err, rows) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve(rows);
-      }
+      if (err) reject(err);
+      else resolve(rows);
     });
   });
 }
 
-async function saveFoodEntry(alimento, kcal, proteina, carboidratos, gordura) {
+function get(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.get(sql, params, (err, row) => {
+      if (err) reject(err);
+      else resolve(row);
+    });
+  });
+}
+
+async function saveUser(nome, idade, peso, altura, objetivo) {
   const createdAt = new Date().toISOString();
   return run(
-    `INSERT INTO food_diary (alimento, kcal, proteina, carboidratos, gordura, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-    [alimento, kcal, proteina, carboidratos, gordura, createdAt]
+    `INSERT INTO users (nome, idade, peso, altura, objetivo, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+    [nome, idade, peso, altura, objetivo, createdAt]
   );
 }
 
-async function getAllFoodEntries() {
-  return all(`SELECT * FROM food_diary ORDER BY id DESC`);
+async function getUser(id) {
+  return get(`SELECT * FROM users WHERE id = ?`, [id]);
+}
+
+async function saveFoodEntry(userId, alimento, kcal, proteina, carboidratos, gordura) {
+  const createdAt = new Date().toISOString();
+  return run(
+    `INSERT INTO food_diary (user_id, alimento, kcal, proteina, carboidratos, gordura, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [userId, alimento, kcal, proteina, carboidratos, gordura, createdAt]
+  );
+}
+
+async function getAllFoodEntries(userId) {
+  return all(`SELECT * FROM food_diary WHERE user_id = ? ORDER BY id DESC`, [userId]);
 }
 
 async function deleteFoodEntry(id) {
   return run(`DELETE FROM food_diary WHERE id = ?`, [id]);
 }
 
-export { db, saveFoodEntry, getAllFoodEntries, deleteFoodEntry };
+export { db, saveUser, getUser, saveFoodEntry, getAllFoodEntries, deleteFoodEntry };

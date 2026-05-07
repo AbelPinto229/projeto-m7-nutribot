@@ -7,7 +7,6 @@
   <style>
     @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;600;700&display=swap');
 
-    /* ── Temas dinâmicos ── */
     :root {
       --bg: #0f1117;
       --surface: #1a1d27;
@@ -21,190 +20,178 @@
       --danger: #f87171;
     }
     body.theme-stressed {
-      --bg: #170a0a;
-      --surface: #271414;
-      --border: #3a1a1a;
-      --accent: #f87171;
-      --accent2: #fb923c;
-      --user-bubble: #2a1010;
-      --bot-bubble: #271414;
+      --bg: #170a0a; --surface: #271414; --border: #3a1a1a;
+      --accent: #f87171; --accent2: #fb923c;
+      --user-bubble: #2a1010; --bot-bubble: #271414;
     }
     body.theme-happy {
-      --bg: #0a1117;
-      --surface: #0f1e2a;
-      --border: #1a2e3a;
-      --accent: #22d3ee;
-      --accent2: #818cf8;
-      --user-bubble: #0a1e2a;
-      --bot-bubble: #0f1e2a;
+      --bg: #0a1117; --surface: #0f1e2a; --border: #1a2e3a;
+      --accent: #22d3ee; --accent2: #818cf8;
+      --user-bubble: #0a1e2a; --bot-bubble: #0f1e2a;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
-
     body {
-      background: var(--bg);
-      color: var(--text);
+      background: var(--bg); color: var(--text);
       font-family: 'Sora', sans-serif;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
+      min-height: 100vh; display: flex; flex-direction: column;
       transition: background 0.6s ease, color 0.3s ease;
     }
 
+    /* ── Modal questionário ── */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.85);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 100;
+      backdrop-filter: blur(4px);
+    }
+    .modal-overlay.hidden { display: none; }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2rem;
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      flex-direction: column;
+      gap: 1.2rem;
+    }
+    .modal h2 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    .modal p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+    .form-group label {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .form-group input, .form-group select {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 0.65rem 0.9rem;
+      font-family: 'Sora', sans-serif;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .form-group input:focus, .form-group select:focus { border-color: var(--accent); }
+    .form-row { display: flex; gap: 0.8rem; }
+    .form-row .form-group { flex: 1; }
+
+    .btn-primary {
+      background: var(--accent); color: #000;
+      border: none; border-radius: 10px;
+      padding: 0.75rem;
+      font-family: 'Sora', sans-serif;
+      font-size: 0.95rem; font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .btn-primary:hover { opacity: 0.85; }
+
+    /* ── Header ── */
     header {
       padding: 1.2rem 2rem;
       border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      gap: 0.8rem;
+      display: flex; align-items: center; gap: 0.8rem;
       background: var(--surface);
       transition: background 0.6s ease, border-color 0.6s ease;
     }
     .logo-dot {
-      width: 10px; height: 10px;
-      border-radius: 50%;
-      background: var(--accent);
-      box-shadow: 0 0 8px var(--accent);
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--accent); box-shadow: 0 0 8px var(--accent);
       transition: background 0.6s ease, box-shadow 0.6s ease;
     }
-    header h1 {
-      font-size: 1.1rem;
-      font-weight: 600;
-      letter-spacing: 0.05em;
-    }
+    header h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: 0.05em; }
     header span { color: var(--accent); transition: color 0.6s ease; }
-    .theme-label {
-      margin-left: auto;
-      font-size: 0.7rem;
-      color: var(--text-muted);
+    .header-right { margin-left: auto; display: flex; align-items: center; gap: 0.8rem; }
+    .user-badge {
+      font-size: 0.75rem; color: var(--text-muted);
       font-family: 'DM Mono', monospace;
-      background: var(--border);
-      padding: 0.2rem 0.6rem;
+      background: var(--border); padding: 0.2rem 0.6rem;
       border-radius: 4px;
-      transition: background 0.6s ease;
+    }
+    .theme-label {
+      font-size: 0.7rem; color: var(--text-muted);
+      font-family: 'DM Mono', monospace;
+      background: var(--border); padding: 0.2rem 0.6rem;
+      border-radius: 4px;
     }
 
-    .layout {
-      display: flex;
-      flex: 1;
-      overflow: hidden;
-    }
+    .layout { display: flex; flex: 1; overflow: hidden; }
 
-    /* ── Chat area ── */
-    .chat-section {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-
+    /* ── Chat ── */
+    .chat-section { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
     #messages {
-      flex: 1;
-      overflow-y: auto;
-      padding: 1.5rem;
-      display: flex;
-      flex-direction: column;
-      gap: 1rem;
-      scrollbar-width: thin;
-      scrollbar-color: var(--border) transparent;
+      flex: 1; overflow-y: auto; padding: 1.5rem;
+      display: flex; flex-direction: column; gap: 1rem;
+      scrollbar-width: thin; scrollbar-color: var(--border) transparent;
     }
-
-    .msg {
-      display: flex;
-      gap: 0.8rem;
-      max-width: 80%;
-      animation: fadeIn 0.25s ease;
-    }
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(6px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
+    .msg { display: flex; gap: 0.8rem; max-width: 80%; animation: fadeIn 0.25s ease; }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
     .msg.user { align-self: flex-end; flex-direction: row-reverse; }
     .msg.bot  { align-self: flex-start; }
-
     .avatar {
-      width: 32px; height: 32px;
-      border-radius: 50%;
+      width: 32px; height: 32px; border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
-      font-size: 0.85rem;
-      flex-shrink: 0;
+      font-size: 0.85rem; flex-shrink: 0;
       border: 1px solid var(--border);
-      transition: border-color 0.6s ease;
     }
     .msg.user .avatar { background: var(--accent); color: #000; font-weight: 700; }
     .msg.bot  .avatar { background: var(--surface); }
-
     .bubble {
-      padding: 0.75rem 1rem;
-      border-radius: 12px;
-      font-size: 0.9rem;
-      line-height: 1.55;
+      padding: 0.75rem 1rem; border-radius: 12px;
+      font-size: 0.9rem; line-height: 1.55;
       border: 1px solid var(--border);
       transition: background 0.6s ease, border-color 0.6s ease;
     }
     .msg.user .bubble { background: var(--user-bubble); border-radius: 12px 4px 12px 12px; }
     .msg.bot  .bubble { background: var(--bot-bubble); border-radius: 4px 12px 12px 12px; }
-
-    .bubble pre {
-      font-family: 'DM Mono', monospace;
-      font-size: 0.78rem;
-      background: rgba(0,0,0,0.3);
-      padding: 0.6rem 0.8rem;
-      border-radius: 6px;
-      margin-top: 0.5rem;
-      overflow-x: auto;
-      border: 1px solid var(--border);
-    }
-
     .cursor {
-      display: inline-block;
-      width: 2px; height: 14px;
-      background: var(--accent);
-      margin-left: 2px;
-      animation: blink 0.8s step-end infinite;
-      vertical-align: middle;
-      transition: background 0.6s ease;
+      display: inline-block; width: 2px; height: 14px;
+      background: var(--accent); margin-left: 2px;
+      animation: blink 0.8s step-end infinite; vertical-align: middle;
     }
     @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
 
-    /* ── Input area ── */
+    /* ── Input ── */
     .input-area {
-      padding: 1rem 1.5rem;
-      border-top: 1px solid var(--border);
-      background: var(--surface);
-      display: flex;
-      gap: 0.6rem;
-      align-items: flex-end;
+      padding: 1rem 1.5rem; border-top: 1px solid var(--border);
+      background: var(--surface); display: flex; gap: 0.6rem; align-items: flex-end;
       transition: background 0.6s ease, border-color 0.6s ease;
     }
-
     #userInput {
-      flex: 1;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      color: var(--text);
-      border-radius: 10px;
-      padding: 0.7rem 1rem;
-      font-family: 'Sora', sans-serif;
-      font-size: 0.9rem;
-      resize: none;
-      min-height: 44px;
-      max-height: 120px;
-      outline: none;
-      transition: border-color 0.2s, background 0.6s ease;
+      flex: 1; background: var(--bg); border: 1px solid var(--border);
+      color: var(--text); border-radius: 10px; padding: 0.7rem 1rem;
+      font-family: 'Sora', sans-serif; font-size: 0.9rem;
+      resize: none; min-height: 44px; max-height: 120px; outline: none;
+      transition: border-color 0.2s;
     }
     #userInput:focus { border-color: var(--accent); }
     #userInput::placeholder { color: var(--text-muted); }
-
     .btn {
-      padding: 0.65rem 1.1rem;
-      border: none;
-      border-radius: 10px;
-      cursor: pointer;
-      font-family: 'Sora', sans-serif;
-      font-size: 0.85rem;
-      font-weight: 600;
-      transition: opacity 0.15s, transform 0.1s, background 0.6s ease;
+      padding: 0.65rem 1.1rem; border: none; border-radius: 10px;
+      cursor: pointer; font-family: 'Sora', sans-serif;
+      font-size: 0.85rem; font-weight: 600;
+      transition: opacity 0.15s, transform 0.1s;
     }
     .btn:active { transform: scale(0.96); }
     .btn-send { background: var(--accent); color: #000; }
@@ -212,109 +199,96 @@
     .btn-mic { background: var(--border); color: var(--text); font-size: 1rem; }
     .btn-mic.active { background: var(--danger); color: #fff; }
 
-    /* ── Diary sidebar ── */
+    /* ── Diary ── */
     .diary-section {
-      width: 280px;
-      border-left: 1px solid var(--border);
-      background: var(--surface);
-      display: flex;
-      flex-direction: column;
+      width: 280px; border-left: 1px solid var(--border);
+      background: var(--surface); display: flex; flex-direction: column;
       transition: background 0.6s ease, border-color 0.6s ease;
     }
     .diary-header {
-      padding: 1rem 1.2rem;
-      border-bottom: 1px solid var(--border);
-      font-size: 0.8rem;
-      font-weight: 600;
-      letter-spacing: 0.08em;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      transition: border-color 0.6s ease;
+      padding: 1rem 1.2rem; border-bottom: 1px solid var(--border);
+      font-size: 0.8rem; font-weight: 600; letter-spacing: 0.08em;
+      color: var(--text-muted); text-transform: uppercase;
+      display: flex; justify-content: space-between; align-items: center;
     }
-    .diary-total {
-      font-family: 'DM Mono', monospace;
-      font-size: 0.75rem;
-      color: var(--accent);
-      transition: color 0.6s ease;
-    }
+    .diary-total { font-family: 'DM Mono', monospace; font-size: 0.75rem; color: var(--accent); }
     #diaryList {
-      flex: 1;
-      overflow-y: auto;
-      padding: 0.8rem;
-      display: flex;
-      flex-direction: column;
-      gap: 0.6rem;
-      scrollbar-width: thin;
-      scrollbar-color: var(--border) transparent;
+      flex: 1; overflow-y: auto; padding: 0.8rem;
+      display: flex; flex-direction: column; gap: 0.6rem;
+      scrollbar-width: thin; scrollbar-color: var(--border) transparent;
     }
     .diary-item {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 0.7rem 0.9rem;
-      font-size: 0.82rem;
-      display: flex;
-      flex-direction: column;
-      gap: 0.3rem;
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; padding: 0.7rem 0.9rem;
+      font-size: 0.82rem; display: flex; flex-direction: column; gap: 0.3rem;
       animation: fadeIn 0.25s ease;
-      transition: background 0.6s ease, border-color 0.6s ease;
     }
-    .diary-item-top {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .diary-item-name {
-      font-weight: 600;
-      color: var(--text);
-    }
-    .diary-item-kcal {
-      font-family: 'DM Mono', monospace;
-      font-size: 0.75rem;
-      color: var(--accent);
-      transition: color 0.6s ease;
-    }
-    .diary-item-macros {
-      color: var(--text-muted);
-      font-family: 'DM Mono', monospace;
-      font-size: 0.72rem;
-    }
+    .diary-item-top { display: flex; justify-content: space-between; align-items: center; }
+    .diary-item-name { font-weight: 600; }
+    .diary-item-kcal { font-family: 'DM Mono', monospace; font-size: 0.75rem; color: var(--accent); }
+    .diary-item-macros { color: var(--text-muted); font-family: 'DM Mono', monospace; font-size: 0.72rem; }
     .btn-delete {
-      background: none;
-      border: none;
-      color: var(--text-muted);
-      cursor: pointer;
-      font-size: 0.8rem;
-      padding: 0.1rem 0.3rem;
-      border-radius: 4px;
-      transition: color 0.15s, background 0.15s;
+      background: none; border: none; color: var(--text-muted);
+      cursor: pointer; font-size: 0.8rem; padding: 0.1rem 0.3rem;
+      border-radius: 4px; transition: color 0.15s, background 0.15s;
     }
     .btn-delete:hover { color: var(--danger); background: rgba(248,113,113,0.1); }
-
-    .empty-diary {
-      text-align: center;
-      color: var(--text-muted);
-      font-size: 0.8rem;
-      padding: 2rem 1rem;
-      line-height: 1.6;
-    }
+    .empty-diary { text-align: center; color: var(--text-muted); font-size: 0.8rem; padding: 2rem 1rem; line-height: 1.6; }
   </style>
 </head>
 <body>
+
+  <!-- Modal questionário -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <h2>👋 Bem-vindo ao NutriBot</h2>
+      <p>Diz-nos um pouco sobre ti para personalizarmos as tuas recomendações nutricionais.</p>
+      <div class="form-group">
+        <label>Nome</label>
+        <input type="text" id="inputNome" placeholder="O teu nome" />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Idade</label>
+          <input type="number" id="inputIdade" placeholder="25" min="10" max="100" />
+        </div>
+        <div class="form-group">
+          <label>Peso (kg)</label>
+          <input type="number" id="inputPeso" placeholder="70" min="30" max="300" />
+        </div>
+        <div class="form-group">
+          <label>Altura (cm)</label>
+          <input type="number" id="inputAltura" placeholder="175" min="100" max="250" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Objetivo</label>
+        <select id="inputObjetivo">
+          <option value="">Escolhe o teu objetivo</option>
+          <option value="perder peso">Perder peso</option>
+          <option value="ganhar massa muscular">Ganhar massa muscular</option>
+          <option value="manutenção">Manutenção</option>
+          <option value="melhorar saúde geral">Melhorar saúde geral</option>
+        </select>
+      </div>
+      <button class="btn-primary" id="btnGuardarUser">Começar →</button>
+    </div>
+  </div>
+
   <header>
     <div class="logo-dot"></div>
     <h1>Nutri<span>Bot</span></h1>
-    <div class="theme-label" id="themeLabel">neutro</div>
+    <div class="header-right">
+      <span class="user-badge" id="userBadge">...</span>
+      <span class="theme-label" id="themeLabel">neutro</span>
+    </div>
   </header>
 
   <div class="layout">
     <section class="chat-section">
       <div id="messages"></div>
       <div class="input-area">
-        <textarea id="userInput" rows="1" placeholder="Descreve a tua refeição... ex: comi 2 ovos mexidos com torrada"></textarea>
+        <textarea id="userInput" rows="1" placeholder="Descreve a tua refeição..."></textarea>
         <button class="btn btn-mic" id="micBtn" title="Falar">🎤</button>
         <button class="btn btn-send" id="sendBtn">Enviar</button>
       </div>
@@ -332,55 +306,92 @@
   </div>
 
   <script>
-    // ── Tema dinâmico baseado na conversa ──
-    const themes = {
-      stressed: ['stressado', 'cansado', 'mau', 'ansioso', 'mal', 'deprimido', 'fraco', 'gordura', 'culpa'],
-      happy: ['ótimo', 'bem', 'feliz', 'excelente', 'saudável', 'energia', 'motivado', 'proteína', 'treino']
-    };
+    let currentUser = null;
 
+    // ── Verificar se já existe utilizador no localStorage ──
+    const savedUserId = localStorage.getItem('nutribot_user_id');
+    if (savedUserId) {
+      fetch(`/users/${savedUserId}`)
+        .then(r => r.json())
+        .then(({ user }) => {
+          if (user) {
+            currentUser = user;
+            document.getElementById('modalOverlay').classList.add('hidden');
+            document.getElementById('userBadge').textContent = user.nome;
+            loadDiary();
+          }
+        })
+        .catch(() => {});
+    }
+
+    // ── Guardar utilizador ──
+    document.getElementById('btnGuardarUser').addEventListener('click', async () => {
+      const nome = document.getElementById('inputNome').value.trim();
+      const idade = parseInt(document.getElementById('inputIdade').value);
+      const peso = parseFloat(document.getElementById('inputPeso').value);
+      const altura = parseFloat(document.getElementById('inputAltura').value);
+      const objetivo = document.getElementById('inputObjetivo').value;
+
+      if (!nome || !idade || !peso || !altura || !objetivo) {
+        alert('Preenche todos os campos.');
+        return;
+      }
+
+      try {
+        const res = await fetch('/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nome, idade, peso, altura, objetivo })
+        });
+        const { user } = await res.json();
+        currentUser = user;
+        localStorage.setItem('nutribot_user_id', user.id);
+        document.getElementById('modalOverlay').classList.add('hidden');
+        document.getElementById('userBadge').textContent = user.nome;
+        loadDiary();
+      } catch (err) {
+        alert('Erro ao guardar. Tenta novamente.');
+      }
+    });
+
+    // ── Temas dinâmicos (só baseado no utilizador) ──
+    const themes = {
+      stressed: ['stressado', 'cansado', 'mau', 'ansioso', 'culpa'],
+      happy: ['ótimo', 'bem', 'feliz', 'excelente', 'motivado', 'energia', 'treino']
+    };
     function applyTheme(text) {
       const lower = text.toLowerCase();
       let theme = 'neutro';
       if (themes.stressed.some(w => lower.includes(w))) theme = 'stressed';
       else if (themes.happy.some(w => lower.includes(w))) theme = 'happy';
-
       document.body.className = theme !== 'neutro' ? `theme-${theme}` : '';
       document.getElementById('themeLabel').textContent = theme;
     }
 
-    // ── Speech-to-Text (Web Speech API) ──
+    // ── Speech-to-Text ──
     const micBtn = document.getElementById('micBtn');
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     let recognition = null;
-
     if (SpeechRecognition) {
       recognition = new SpeechRecognition();
       recognition.lang = 'pt-PT';
       recognition.continuous = false;
       recognition.interimResults = false;
-
       recognition.onresult = (e) => {
-        const transcript = e.results[0][0].transcript;
-        document.getElementById('userInput').value = transcript;
+        document.getElementById('userInput').value = e.results[0][0].transcript;
         micBtn.classList.remove('active');
       };
       recognition.onend = () => micBtn.classList.remove('active');
     } else {
       micBtn.style.display = 'none';
     }
-
     micBtn.addEventListener('click', () => {
       if (!recognition) return;
-      if (micBtn.classList.contains('active')) {
-        recognition.stop();
-        micBtn.classList.remove('active');
-      } else {
-        recognition.start();
-        micBtn.classList.add('active');
-      }
+      if (micBtn.classList.contains('active')) { recognition.stop(); micBtn.classList.remove('active'); }
+      else { recognition.start(); micBtn.classList.add('active'); }
     });
 
-    // ── Chat UI ──
+    // ── Chat ──
     const messagesEl = document.getElementById('messages');
     const userInput = document.getElementById('userInput');
     const sendBtn = document.getElementById('sendBtn');
@@ -393,15 +404,12 @@
     function addMessage(role, text) {
       const msg = document.createElement('div');
       msg.className = `msg ${role}`;
-
       const avatar = document.createElement('div');
       avatar.className = 'avatar';
-      avatar.textContent = role === 'user' ? 'U' : '🥗';
-
+      avatar.textContent = role === 'user' ? (currentUser?.nome?.[0] || 'U') : '🥗';
       const bubble = document.createElement('div');
       bubble.className = 'bubble';
       bubble.textContent = text;
-
       msg.appendChild(avatar);
       msg.appendChild(bubble);
       messagesEl.appendChild(msg);
@@ -412,18 +420,14 @@
     function addBotStreamBubble() {
       const msg = document.createElement('div');
       msg.className = 'msg bot';
-
       const avatar = document.createElement('div');
       avatar.className = 'avatar';
       avatar.textContent = '🥗';
-
       const bubble = document.createElement('div');
       bubble.className = 'bubble';
-
       const cursor = document.createElement('span');
       cursor.className = 'cursor';
       bubble.appendChild(cursor);
-
       msg.appendChild(avatar);
       msg.appendChild(bubble);
       messagesEl.appendChild(msg);
@@ -436,7 +440,6 @@
       if (!text) return;
       userInput.value = '';
       sendBtn.disabled = true;
-
       addMessage('user', text);
       applyTheme(text);
 
@@ -444,7 +447,8 @@
       let fullResponse = '';
 
       try {
-        const res = await fetch(`/chat?message=${encodeURIComponent(text)}`);
+        const userId = currentUser?.id || '';
+        const res = await fetch(`/chat?message=${encodeURIComponent(text)}&user_id=${userId}`);
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
 
@@ -466,36 +470,27 @@
             }
           }
         }
-
         cursor.remove();
-        applyTheme(fullResponse);
 
-        // Se a resposta contém dados de refeição, extrai e guarda
-        if (looksLikeFood(text)) {
-          await parseAndSaveFood(text);
-        }
-
+        if (looksLikeFood(text)) await parseAndSaveFood(text);
       } catch (err) {
         bubble.textContent = 'Erro ao contactar o servidor.';
         cursor.remove();
       }
-
       sendBtn.disabled = false;
     }
 
     function looksLikeFood(text) {
-      const foodWords = ['comi', 'comer', 'almocei', 'jantei', 'pequeno-almoço', 'refeição', 'comida', 'almoço', 'jantar', 'café', 'snack', 'lanche'];
-      const lower = text.toLowerCase();
-      return foodWords.some(w => lower.includes(w)) || text.length > 10;
+      const words = ['comi', 'comer', 'almocei', 'jantei', 'pequeno-almoço', 'refeição', 'almoço', 'jantar', 'café', 'snack', 'lanche', 'bebi'];
+      return words.some(w => text.toLowerCase().includes(w));
     }
 
-    // ── Tool Use: extrair macros e guardar ──
     async function parseAndSaveFood(text) {
       try {
         const res = await fetch('/nutrition/parse', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text })
+          body: JSON.stringify({ text, user_id: currentUser?.id || 1 })
         });
         if (!res.ok) return;
         const { entry } = await res.json();
@@ -503,7 +498,6 @@
       } catch (_) {}
     }
 
-    // ── Tool Use / Function Calling: apagar do diário ──
     async function deleteEntry(id, itemEl) {
       try {
         await fetch(`/nutrition/diary/${id}`, { method: 'DELETE' });
@@ -512,11 +506,9 @@
       } catch (_) {}
     }
 
-    // ── Diário sidebar ──
     function addDiaryItem(entry) {
       const emptyEl = document.querySelector('.empty-diary');
       if (emptyEl) emptyEl.remove();
-
       const item = document.createElement('div');
       item.className = 'diary-item';
       item.innerHTML = `
@@ -529,38 +521,31 @@
         </div>
         <div class="diary-item-macros">P: ${entry.proteina} · C: ${entry.carboidratos} · G: ${entry.gordura}</div>
       `;
-
       item.querySelector('.btn-delete').addEventListener('click', () => {
         if (entry.id) deleteEntry(entry.id, item);
         else { item.remove(); refreshTotal(); }
       });
-
       document.getElementById('diaryList').prepend(item);
       refreshTotal();
     }
 
     function refreshTotal() {
-      const kcalEls = document.querySelectorAll('.diary-item-kcal');
       let total = 0;
-      kcalEls.forEach(el => {
+      document.querySelectorAll('.diary-item-kcal').forEach(el => {
         const val = parseInt(el.textContent);
         if (!isNaN(val)) total += val;
       });
       document.getElementById('totalKcal').textContent = `${total} kcal`;
     }
 
-    // Carregar diário ao iniciar
     async function loadDiary() {
+      if (!currentUser) return;
       try {
-        const res = await fetch('/nutrition/diary');
+        const res = await fetch(`/nutrition/diary?user_id=${currentUser.id}`);
         const { entries } = await res.json();
-        if (entries && entries.length > 0) {
-          entries.forEach(e => addDiaryItem(e));
-        }
+        if (entries && entries.length > 0) entries.forEach(e => addDiaryItem(e));
       } catch (_) {}
     }
-
-    loadDiary();
   </script>
 </body>
 </html>

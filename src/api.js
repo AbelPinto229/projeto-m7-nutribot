@@ -3,7 +3,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import 'dotenv/config';
 
-import { saveFoodEntry, getAllFoodEntries, deleteFoodEntry } from './db.js';
+import { saveUser, getUser, saveFoodEntry, getAllFoodEntries, deleteFoodEntry } from './db.js';
 import { chatStream, extractIncrementalText } from './geminiClient.js';
 import { parseNutritionFromText } from './nutriParser.js';
 
@@ -14,9 +14,36 @@ app.use(express.static(join(__dirname, '../public')));
 
 const conversationHistory = [];
 
-// Streaming chat com contexto
+// Criar utilizador (questionário inicial)
+app.post('/users', async (req, res) => {
+  const { nome, idade, peso, altura, objetivo } = req.body;
+  if (!nome || !idade || !peso || !altura || !objetivo) {
+    return res.status(400).json({ error: 'Todos os campos são obrigatórios.' });
+  }
+  try {
+    const result = await saveUser(nome, idade, peso, altura, objetivo);
+    const user = await getUser(result.lastID);
+    res.json({ user });
+  } catch (error) {
+    res.status(500).json({ error: error.message || error });
+  }
+});
+
+// Obter utilizador
+app.get('/users/:id', async (req, res) => {
+  try {
+    const user = await getUser(req.params.id);
+    if (!user) return res.status(404).json({ error: 'Utilizador não encontrado.' });
+    res.json({ user });
+  } catch (error) {
+    res.status(500).json({ error: error.message || error });
+  }
+});
+
+// Streaming chat com contexto e dados do utilizador
 app.get('/chat', async (req, res) => {
   const message = String(req.query.message || '').trim();
+  const userId = req.query.user_id ? parseInt(req.query.user_id) : null;
   if (!message) {
     return res.status(400).json({ error: 'Campo "message" é obrigatório.' });
   }
@@ -27,7 +54,8 @@ app.get('/chat', async (req, res) => {
   res.flushHeaders();
 
   try {
-    const stream = await chatStream(message, conversationHistory.slice(-5));
+    const user = userId ? await getUser(userId) : null;
+    const stream = await chatStream(message, conversationHistory.slice(-5), user);
     let aiResponse = '';
 
     for await (const chunk of stream) {
@@ -49,21 +77,22 @@ app.get('/chat', async (req, res) => {
 
 // Extrair macros e guardar no diário
 app.post('/nutrition/parse', async (req, res) => {
-  const { text } = req.body;
+  const { text, user_id } = req.body;
   if (!text) return res.status(400).json({ error: 'Campo "text" é obrigatório.' });
   try {
     const entry = await parseNutritionFromText(text);
-    await saveFoodEntry(entry.alimento, entry.kcal, entry.proteina, entry.carboidratos, entry.gordura);
+    await saveFoodEntry(user_id || 1, entry.alimento, entry.kcal, entry.proteina, entry.carboidratos, entry.gordura);
     res.json({ entry });
   } catch (error) {
     res.status(500).json({ error: error.message || error });
   }
 });
 
-// Obter todo o diário alimentar
+// Obter diário do utilizador
 app.get('/nutrition/diary', async (req, res) => {
+  const userId = req.query.user_id ? parseInt(req.query.user_id) : 1;
   try {
-    const entries = await getAllFoodEntries();
+    const entries = await getAllFoodEntries(userId);
     res.json({ entries });
   } catch (error) {
     res.status(500).json({ error: error.message || error });
@@ -72,10 +101,9 @@ app.get('/nutrition/diary', async (req, res) => {
 
 // Apagar entrada do diário
 app.delete('/nutrition/diary/:id', async (req, res) => {
-  const { id } = req.params;
   try {
-    await deleteFoodEntry(id);
-    res.json({ success: true, deleted_id: id });
+    await deleteFoodEntry(req.params.id);
+    res.json({ success: true, deleted_id: req.params.id });
   } catch (error) {
     res.status(500).json({ error: error.message || error });
   }
