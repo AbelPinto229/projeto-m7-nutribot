@@ -1,0 +1,22 @@
+{
+  "name": "nutribot",
+  "version": "1.0.0",
+  "description": "NutriBot - Diário alimentar com IA",
+  "main": "src/api.js",
+  "scripts": {
+    "start": "node src/api.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@google/genai": "^1.50.1",
+    "dotenv": "^17.4.2",
+    "express": "^4.18.4",
+    "groq-sdk": "^1.1.2",
+    "sqlite3": "^6.0.1",
+    "zod": "^3.23.2",
+    "zod-to-json-schema": "^3.4.0"
+  }
+}
