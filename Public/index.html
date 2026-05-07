@@ -24,10 +24,20 @@
       --accent: #f87171; --accent2: #fb923c;
       --user-bubble: #2a1010; --bot-bubble: #271414;
     }
+    body.theme-angry {
+      --bg: #1a0808; --surface: #2d0f0f; --border: #4a1515;
+      --accent: #ef4444; --accent2: #f97316;
+      --user-bubble: #2d0f0f; --bot-bubble: #1a0808;
+    }
     body.theme-happy {
       --bg: #0a1117; --surface: #0f1e2a; --border: #1a2e3a;
       --accent: #22d3ee; --accent2: #818cf8;
       --user-bubble: #0a1e2a; --bot-bubble: #0f1e2a;
+    }
+    body.theme-ok {
+      --bg: #111009; --surface: #1e1c10; --border: #2e2c18;
+      --accent: #f59e0b; --accent2: #84cc16;
+      --user-bubble: #1e1c10; --bot-bubble: #111009;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -97,7 +107,12 @@
       font-size: 0.7rem; color: var(--text-muted);
       font-family: 'DM Mono', monospace;
       background: var(--border); padding: 0.2rem 0.6rem; border-radius: 4px;
+      transition: background 0.4s ease, color 0.4s ease;
     }
+    .theme-label.mood-happy    { background: #0f2a1e; color: #4ade80; }
+    .theme-label.mood-ok       { background: #2a2208; color: #f59e0b; }
+    .theme-label.mood-stressed { background: #2a1010; color: #f87171; }
+    .theme-label.mood-angry    { background: #3a0a0a; color: #ef4444; }
 
     .layout { display: flex; flex: 1; overflow: hidden; }
 
@@ -316,18 +331,19 @@
       }
     });
 
-    // ── Temas dinâmicos ──
-    const themes = {
-      stressed: ['stressado', 'cansado', 'mau', 'ansioso', 'culpa'],
-      happy: ['excelente', 'ótimo', 'muscular', 'crescimento', 'recuperação', 'proteína', 'parabéns', 'energia', 'perfeito', 'boa escolha']
-    };
-    function applyTheme(text) {
-      const lower = text.toLowerCase();
-      let theme = 'neutro';
-      if (themes.stressed.some(w => lower.includes(w))) theme = 'stressed';
-      else if (themes.happy.some(w => lower.includes(w))) theme = 'happy';
-      document.body.className = theme !== 'neutro' ? `theme-${theme}` : '';
-      document.getElementById('themeLabel').textContent = theme;
+    // ── Mood ──
+    function applyMood(mood) {
+      const themeLabel = document.getElementById('themeLabel');
+      const map = {
+        happy:    { theme: 'theme-happy',   label: 'happy' },
+        ok:       { theme: 'theme-ok',      label: 'ok' },
+        stressed: { theme: 'theme-stressed', label: 'stressed' },
+        angry:    { theme: 'theme-angry',   label: 'angry' },
+      };
+      const m = map[mood] ?? { theme: '', label: 'neutro' };
+      document.body.className = m.theme;
+      themeLabel.className = `theme-label mood-${mood}`;
+      themeLabel.textContent = m.label;
     }
 
     // ── Speech-to-Text ──
@@ -397,7 +413,7 @@
       return { bubble, cursor };
     }
 
-    // ── Carregar histórico do chat ──
+    // ── Histórico ──
     async function loadChatHistory() {
       if (!currentUser) return;
       try {
@@ -412,23 +428,26 @@
 
         history.forEach(row => {
           addMessage('user', row.user_message);
-          addMessage('bot', row.ai_response);
+          const clean = row.ai_response.replace(/^MOOD:(happy|ok|stressed|angry)\n\n?/, '');
+          addMessage('bot', clean);
         });
 
         messagesEl.scrollTop = messagesEl.scrollHeight;
       } catch (_) {}
     }
 
+    // ── Enviar mensagem ──
     async function sendMessage() {
       const text = userInput.value.trim();
       if (!text) return;
       userInput.value = '';
       sendBtn.disabled = true;
       addMessage('user', text);
-      applyTheme(text);
 
       const { bubble, cursor } = addBotStreamBubble();
       let fullResponse = '';
+      let wasToolCall = false;
+      let pendingEventType = null;
 
       try {
         const userId = currentUser?.id || '';
@@ -439,11 +458,60 @@
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          const lines = decoder.decode(value).split('\n');
+
+          const raw = decoder.decode(value, { stream: true });
+          const lines = raw.split('\n');
+
           for (const line of lines) {
+            if (line.startsWith('event: ')) {
+              pendingEventType = line.slice(7).trim();
+              continue;
+            }
+
             if (line.startsWith('data: ')) {
-              const data = line.slice(6);
-              if (data === '[DONE]') break;
+              const data = line.slice(6).trim();
+              if (!data) continue;
+
+              // Mood
+              if (pendingEventType === 'mood') {
+                try { applyMood(JSON.parse(data)); } catch (_) {}
+                pendingEventType = null;
+                continue;
+              }
+
+              // Tool action — atualiza o diário no DOM
+              if (pendingEventType === 'tool_action') {
+                wasToolCall = true;
+                try {
+                  const action = JSON.parse(data);
+                  if (action.action === 'delete_all') {
+                    document.querySelectorAll('.diary-item').forEach(el => el.remove());
+                    const empty = document.createElement('div');
+                    empty.className = 'empty-diary';
+                    empty.innerHTML = 'Ainda sem refeições.<br/>Descreve o que comeste!';
+                    document.getElementById('diaryList').appendChild(empty);
+                    refreshTotal();
+                  } else if (action.action === 'delete_one') {
+                    // Tenta pelo data-id primeiro, depois pelo nome
+                    let itemEl = document.querySelector(`.diary-item[data-id="${action.id}"]`);
+                    if (!itemEl && action.deleted?.alimento) {
+                      const name = action.deleted.alimento.toLowerCase();
+                      document.querySelectorAll('.diary-item').forEach(el => {
+                        const elName = el.querySelector('.diary-item-name')?.textContent?.toLowerCase();
+                        if (elName && (elName.includes(name) || name.includes(elName))) itemEl = el;
+                      });
+                    }
+                    if (itemEl) { itemEl.remove(); refreshTotal(); }
+                  }
+                } catch (_) {}
+                pendingEventType = null;
+                continue;
+              }
+
+              if (data === '[DONE]') { pendingEventType = null; break; }
+
+              pendingEventType = null;
+
               try {
                 const chunk = JSON.parse(data);
                 fullResponse += chunk;
@@ -456,13 +524,17 @@
         }
 
         cursor.remove();
-        applyTheme(fullResponse);
 
-        if (looksLikeFood(text)) await parseAndSaveFood(text);
+        // Só adiciona ao diário se NÃO foi um delete e parece comida
+        if (!wasToolCall && looksLikeFood(text)) {
+          await parseAndSaveFood(text);
+        }
+
       } catch (err) {
         bubble.textContent = 'Erro ao contactar o servidor.';
         cursor.remove();
       }
+
       sendBtn.disabled = false;
     }
 
@@ -497,6 +569,7 @@
       if (emptyEl) emptyEl.remove();
       const item = document.createElement('div');
       item.className = 'diary-item';
+      if (entry.id) item.dataset.id = entry.id;
       item.innerHTML = `
         <div class="diary-item-top">
           <span class="diary-item-name">${entry.alimento}</span>

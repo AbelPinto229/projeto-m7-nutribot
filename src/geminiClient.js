@@ -4,9 +4,60 @@ import 'dotenv/config';
 const client = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const MODEL = 'llama-3.3-70b-versatile';
 
+const TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'delete_food_entry',
+      description: 'Elimina uma refeição do diário do utilizador pelo nome. Usa quando o utilizador pede para apagar, eliminar ou remover uma refeição específica.',
+      parameters: {
+        type: 'object',
+        properties: {
+          nome: {
+            type: 'string',
+            description: 'Nome exato ou parcial da refeição a eliminar, tal como aparece no diário'
+          }
+        },
+        required: ['nome']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_last_food_entry',
+      description: 'Elimina a última refeição registada no diário. Usa quando o utilizador diz "elimina a última refeição" ou similar.',
+      parameters: {
+        type: 'object',
+        properties: {},
+        required: []
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_all_food_entries',
+      description: 'Elimina todas as refeições do diário de hoje. Usa apenas quando o utilizador pede explicitamente para apagar tudo.',
+      parameters: {
+        type: 'object',
+        properties: {},
+        required: []
+      }
+    }
+  }
+];
+
 function createSystemPrompt(user = null) {
   const base = `És o NutriBot, um assistente de nutrição direto, honesto e exigente. 
-Responde sempre em português de Portugal. Nunca sejas condescendente — diz a verdade.`;
+Responde sempre em português de Portugal. Nunca sejas condescendente — diz a verdade.
+
+Tens acesso a funções para gerir o diário alimentar do utilizador:
+- delete_food_entry(nome) → elimina uma refeição pelo nome
+- delete_last_food_entry() → elimina a última refeição
+- delete_all_food_entries() → elimina todas as refeições de hoje
+
+Quando o utilizador pede para eliminar uma refeição, usa SEMPRE a função correta. Não respondas apenas em texto.`;
 
   if (!user) {
     return base + `\nAinda não tens dados do utilizador. Pede-lhe: nome, idade, sexo, peso (kg), 
@@ -14,7 +65,6 @@ altura (cm), nível de atividade (sedentário/leve/moderado/intenso/atleta) e ob
 (perder peso / manutenção / ganhar massa muscular) e número de refeições por dia.`;
   }
 
-  // ── 1. TDEE com Mifflin-St Jeor ──────────────────────────────────────────
   const { nome, idade, sexo, peso, altura, atividade, objetivo, refeicoesPorDia = 5 } = user;
 
   const tmb = sexo === 'masculino'
@@ -30,25 +80,17 @@ altura (cm), nível de atividade (sedentário/leve/moderado/intenso/atleta) e ob
   };
   const tdee = Math.round(tmb * (fatores[atividade] ?? 1.55));
 
-  // ── 2. Meta calórica por objetivo ────────────────────────────────────────
-  const metaCaloricaDiaria = objetivo === 'perder_peso'   ? tdee - 500
-                           : objetivo === 'ganhar_massa'  ? tdee + 300
-                           : tdee; // manutenção
+  const metaCaloricaDiaria = objetivo === 'perder_peso'  ? tdee - 500
+                           : objetivo === 'ganhar_massa' ? tdee + 300
+                           : tdee;
 
-  // ── 3. Macros diárias alvo ───────────────────────────────────────────────
-  //  Proteína: 1.8g/kg (perder peso), 2.0g/kg (ganhar massa), 1.6g/kg (manutenção)
   const grProt_kg = objetivo === 'perder_peso' ? 1.8 : objetivo === 'ganhar_massa' ? 2.0 : 1.6;
   const protDiaria = Math.round(peso * grProt_kg);
-
-  //  Gordura: 25% das calorias totais
   const gordDiaria = Math.round((metaCaloricaDiaria * 0.25) / 9);
-
-  //  Hidratos: resto das calorias
   const calProt = protDiaria * 4;
   const calGord = gordDiaria * 9;
   const hidratosDiarios = Math.round((metaCaloricaDiaria - calProt - calGord) / 4);
 
-  // ── 4. Metas por refeição ────────────────────────────────────────────────
   const n = refeicoesPorDia;
   const metaPorRefeicao = {
     kcal:     Math.round(metaCaloricaDiaria / n),
@@ -81,42 +123,40 @@ Macros diárias alvo:
 
 ━━ REGRAS DE RESPOSTA ━━
 
-Quando o utilizador descreve uma refeição, responde SEMPRE assim:
+Quando o utilizador descreve uma refeição, responde SEMPRE nesta ordem exata:
 
-1. Lista cada alimento com macros estimados:
-   **Ovo (1):** 70 kcal | P: 6g | C: 0g | G: 5g
-   **Morango (1):** 8 kcal | P: 0g | C: 2g | G: 0g
-   **Total:** 78 kcal | P: 6g | C: 2g | G: 5g
+PASSO 1 — MOOD (primeira linha, obrigatória, sozinha):
+MOOD:happy    → refeição dentro de ±20% das metas de calorias E proteína
+MOOD:ok       → aceitável, mas com pelo menos uma macro com falha minor (60–80% da meta)
+MOOD:stressed → proteína OU calorias abaixo de 60% da meta por refeição
+MOOD:angry    → refeição que contradiz diretamente o objetivo
 
-2. Compara SEMPRE com a meta por refeição e classifica:
-   ✅ se estiver dentro de ±20% da meta
-   ⚠️ se estiver significativamente abaixo (ex: proteína a menos de 60% da meta)
-   ❌ se contrariar diretamente o objetivo (ex: muitos hidratos simples para quem quer perder peso)
+Escreve EXATAMENTE assim na primeira linha: MOOD:happy (ou ok, stressed, angry)
+Depois deixa uma linha em branco. Depois continua a resposta.
 
-3. Julgamento DIRETO e HONESTO (2–4 frases):
-   - Diz CLARAMENTE o que está mal. Não sejas vago.
-   - Exemplo para 1 ovo + morango com objetivo de ganhar massa muscular:
-     "⚠️ Esta refeição tem apenas 6g de proteína, mas a tua meta é ${metaPorRefeicao.prot}g por refeição. 
-      Com ${n} refeições por dia, precisas de ${protDiaria}g de proteína total — e esta mal arranha a superfície. 
-      Para ganhar massa muscular, esta quantidade é insuficiente."
+PASSO 2 — Lista de alimentos com macros:
+**Alimento (quantidade):** X kcal | P: Xg | C: Xg | G: Xg
+**Total:** X kcal | P: Xg | C: Xg | G: Xg
 
-4. Sugestão concreta de melhoria (sempre):
-   - "Adiciona 2 ovos ou 150g de frango para chegar à meta de proteína."
-   - "Substitui o morango por aveia para teres hidratos complexos antes do treino."
+PASSO 3 — Comparação com meta por refeição:
+✅ se dentro de ±20% | ⚠️ se 60–80% | ❌ se abaixo de 60% ou contradiz objetivo
+
+PASSO 4 — Julgamento DIRETO (2–4 frases):
+- Sê honesto e específico. Usa os números reais das metas.
+- Exemplo para 1 ovo + morango, objetivo ganhar massa:
+  "⚠️ Esta refeição tem apenas 6g de proteína, mas a tua meta é ${metaPorRefeicao.prot}g por refeição. Com ${n} refeições por dia, precisas de ${protDiaria}g total — e esta mal arranha a superfície."
+
+PASSO 5 — Sugestão concreta (sempre):
+- "Adiciona 2 ovos ou 150g de frango para atingir a meta de proteína."
 
 REGRAS ADICIONAIS:
-- Se o objetivo for PERDER PESO e a refeição tiver muitos hidratos simples/açúcar → avisa com ❌
-- Se o objetivo for GANHAR MASSA e a refeição tiver poucas calorias/proteína → avisa com ⚠️ ou ❌
-- Nunca digas "boa refeição leve" quando a refeição é claramente insuficiente para o objetivo
-- Nunca ignores macros problemáticas por delicadeza
-- Sê direto como um nutricionista sério, não como uma app de dieta cor-de-rosa`;
+- Se objetivo PERDER PESO e refeição com muitos hidratos simples/açúcar → ❌ MOOD:angry
+- Se objetivo GANHAR MASSA e proteína < 60% da meta → MOOD:stressed ou MOOD:angry
+- NUNCA digas "boa refeição leve" quando é claramente insuficiente
+- Sê direto como um nutricionista sério`;
 }
 
-function extractIncrementalText(chunk) {
-  return chunk.choices?.[0]?.delta?.content || '';
-}
-
-async function chatStream(userMessage, history = [], user = null) {
+async function chatWithTools(userMessage, history = [], user = null) {
   const messages = [
     { role: 'system', content: createSystemPrompt(user) },
     ...history.flatMap(row => [
@@ -126,13 +166,32 @@ async function chatStream(userMessage, history = [], user = null) {
     { role: 'user', content: userMessage }
   ];
 
-  return client.chat.completions.create({
+  const response = await client.chat.completions.create({
     model: MODEL,
     messages,
-    stream: true,
+    tools: TOOLS,
+    tool_choice: 'auto',
+    stream: false,
     max_tokens: 600,
     temperature: 0.3
   });
+
+  const choice = response.choices[0];
+
+  if (choice.finish_reason === 'tool_calls' && choice.message.tool_calls?.length > 0) {
+    return {
+      type: 'tool_call',
+      tool_calls: choice.message.tool_calls.map(tc => ({
+        name: tc.function.name,
+        args: JSON.parse(tc.function.arguments || '{}')
+      }))
+    };
+  }
+
+  return {
+    type: 'text',
+    text: choice.message.content || ''
+  };
 }
 
 async function generateJson(prompt) {
@@ -153,4 +212,4 @@ async function generateJson(prompt) {
   return { text: response.choices[0].message.content };
 }
 
-export { extractIncrementalText, chatStream, generateJson };
+export { chatWithTools, generateJson };

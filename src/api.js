@@ -3,8 +3,8 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import 'dotenv/config';
 
-import { saveUser, getUser, saveFoodEntry, getAllFoodEntries, deleteFoodEntry, saveChatMessage, getRecentChatHistory } from './db.js';
-import { chatStream, extractIncrementalText } from './geminiClient.js';
+import { saveUser, getUser, saveFoodEntry, getAllFoodEntries, deleteFoodEntry, saveChatMessage, getRecentChatHistory, deleteAllFoodEntries, getLastFoodEntry } from './db.js';
+import { chatWithTools, generateJson } from './geminiClient.js';
 import { parseNutritionFromText } from './nutriParser.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -38,7 +38,7 @@ app.get('/users/:id', async (req, res) => {
   }
 });
 
-// Obter últimas 5 mensagens do chat
+// Obter histórico do chat
 app.get('/chat/history', async (req, res) => {
   const userId = req.query.user_id ? parseInt(req.query.user_id) : null;
   if (!userId) return res.status(400).json({ error: 'user_id é obrigatório.' });
@@ -50,7 +50,44 @@ app.get('/chat/history', async (req, res) => {
   }
 });
 
-// Streaming chat com contexto persistente
+// ── Executar tool call no backend ─────────────────────────────────────────────
+async function executeTool(toolName, args, userId) {
+  switch (toolName) {
+
+    case 'delete_food_entry': {
+      const entries = await getAllFoodEntries(userId);
+      const nomeProcurado = (args.nome || '').toLowerCase();
+      const found = entries.find(e =>
+        e.alimento.toLowerCase().includes(nomeProcurado) ||
+        nomeProcurado.includes(e.alimento.toLowerCase())
+      );
+      if (found) {
+        await deleteFoodEntry(found.id);
+        return { success: true, deleted: found, action: 'delete_one', id: found.id };
+      }
+      return { success: false, error: `Não encontrei "${args.nome}" no diário.` };
+    }
+
+    case 'delete_last_food_entry': {
+      const last = await getLastFoodEntry(userId);
+      if (last) {
+        await deleteFoodEntry(last.id);
+        return { success: true, deleted: last, action: 'delete_one', id: last.id };
+      }
+      return { success: false, error: 'Não há refeições no diário.' };
+    }
+
+    case 'delete_all_food_entries': {
+      await deleteAllFoodEntries(userId);
+      return { success: true, action: 'delete_all' };
+    }
+
+    default:
+      return { success: false, error: `Função desconhecida: ${toolName}` };
+  }
+}
+
+// ── Chat principal ─────────────────────────────────────────────────────────────
 app.get('/chat', async (req, res) => {
   const message = String(req.query.message || '').trim();
   const userId = req.query.user_id ? parseInt(req.query.user_id) : null;
@@ -66,20 +103,53 @@ app.get('/chat', async (req, res) => {
   try {
     const user = userId ? await getUser(userId) : null;
     const history = userId ? await getRecentChatHistory(userId, 5) : [];
-    const stream = await chatStream(message, history, user);
-    let aiResponse = '';
 
-    for await (const chunk of stream) {
-      const textChunk = extractIncrementalText(chunk);
-      if (!textChunk) continue;
-      aiResponse += textChunk;
-      res.write(`data: ${JSON.stringify(textChunk)}\n\n`);
+    const result = await chatWithTools(message, history, user);
+
+    // ── Tool call: eliminar refeição ─────────────────────────────────────
+    if (result.type === 'tool_call') {
+      let confirmText = '';
+
+      for (const tc of result.tool_calls) {
+        const toolResult = await executeTool(tc.name, tc.args, userId);
+
+        // Notifica o frontend para atualizar o DOM
+        res.write(`event: tool_action\ndata: ${JSON.stringify(toolResult)}\n\n`);
+
+        if (!toolResult.success) {
+          confirmText = toolResult.error;
+        } else if (toolResult.action === 'delete_all') {
+          confirmText = 'Eliminei todas as refeições do teu diário de hoje.';
+        } else if (toolResult.action === 'delete_one') {
+          confirmText = `Eliminei "${toolResult.deleted.alimento}" do teu diário.`;
+        }
+      }
+
+      res.write(`data: ${JSON.stringify(confirmText)}\n\n`);
+      if (userId) await saveChatMessage(userId, message, confirmText);
+      res.write('event: done\ndata: [DONE]\n\n');
+      return;
     }
 
-    if (userId) await saveChatMessage(userId, message, aiResponse);
+    // ── Resposta normal: extrai MOOD e envia ─────────────────────────────
+    const fullText = result.text;
+    const lines = fullText.split('\n');
+    const firstLine = lines[0].trim();
+    const moodMatch = firstLine.match(/^MOOD:(happy|ok|stressed|angry)$/);
+
+    if (moodMatch) {
+      res.write(`event: mood\ndata: ${JSON.stringify(moodMatch[1])}\n\n`);
+      const rest = lines.slice(1).join('\n').trimStart();
+      if (rest) res.write(`data: ${JSON.stringify(rest)}\n\n`);
+    } else {
+      res.write(`data: ${JSON.stringify(fullText)}\n\n`);
+    }
+
+    if (userId) await saveChatMessage(userId, message, fullText);
     res.write('event: done\ndata: [DONE]\n\n');
+
   } catch (error) {
-    console.error('Erro no streaming:', error);
+    console.error('Erro no chat:', error);
     res.write(`event: error\ndata: ${JSON.stringify(error.message || 'Erro interno')}\n\n`);
   } finally {
     res.end();
@@ -99,7 +169,7 @@ app.post('/nutrition/parse', async (req, res) => {
   }
 });
 
-// Obter diário do utilizador
+// Obter diário
 app.get('/nutrition/diary', async (req, res) => {
   const userId = req.query.user_id ? parseInt(req.query.user_id) : 1;
   try {
@@ -110,7 +180,7 @@ app.get('/nutrition/diary', async (req, res) => {
   }
 });
 
-// Apagar entrada do diário
+// Apagar entrada manual (botão ✕)
 app.delete('/nutrition/diary/:id', async (req, res) => {
   try {
     await deleteFoodEntry(req.params.id);

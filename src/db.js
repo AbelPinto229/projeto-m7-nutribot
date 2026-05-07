@@ -118,4 +118,12 @@ async function getRecentChatHistory(userId, limit = 5) {
   return rows.reverse();
 }
 
+async function deleteAllFoodEntries(userId) {
+  return run(`DELETE FROM food_diary WHERE user_id = ?`, [userId]);
+}
+
+async function getLastFoodEntry(userId) {
+  return get(`SELECT * FROM food_diary WHERE user_id = ? ORDER BY id DESC LIMIT 1`, [userId]);
+}
+
 export { db, saveUser, getUser, saveFoodEntry, getAllFoodEntries, deleteFoodEntry, saveChatMessage, getRecentChatHistory };
