@@ -42,20 +42,13 @@
       position: fixed; inset: 0;
       background: rgba(0,0,0,0.85);
       display: flex; align-items: center; justify-content: center;
-      z-index: 100;
-      backdrop-filter: blur(4px);
+      z-index: 100; backdrop-filter: blur(4px);
     }
     .modal-overlay.hidden { display: none; }
     .modal {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 2rem;
-      width: 100%;
-      max-width: 420px;
-      display: flex;
-      flex-direction: column;
-      gap: 1.2rem;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 16px; padding: 2rem; width: 100%; max-width: 420px;
+      display: flex; flex-direction: column; gap: 1.2rem;
     }
     .modal h2 { font-size: 1.2rem; font-weight: 700; color: var(--accent); }
     .modal p { font-size: 0.85rem; color: var(--text-muted); line-height: 1.5; }
@@ -74,8 +67,8 @@
     .form-row { display: flex; gap: 0.8rem; }
     .form-row .form-group { flex: 1; }
     .btn-primary {
-      background: var(--accent); color: #000;
-      border: none; border-radius: 10px; padding: 0.75rem;
+      background: var(--accent); color: #000; border: none;
+      border-radius: 10px; padding: 0.75rem;
       font-family: 'Sora', sans-serif; font-size: 0.95rem; font-weight: 700;
       cursor: pointer; transition: opacity 0.15s;
     }
@@ -132,6 +125,12 @@
     }
     .msg.user .bubble { background: var(--user-bubble); border-radius: 12px 4px 12px 12px; }
     .msg.bot  .bubble { background: var(--bot-bubble); border-radius: 4px 12px 12px 12px; }
+    .history-divider {
+      text-align: center; color: var(--text-muted);
+      font-size: 0.72rem; font-family: 'DM Mono', monospace;
+      padding: 0.5rem 0; border-top: 1px solid var(--border);
+      margin-bottom: 0.5rem;
+    }
     .cursor {
       display: inline-block; width: 2px; height: 14px;
       background: var(--accent); margin-left: 2px;
@@ -281,6 +280,7 @@
             currentUser = user;
             document.getElementById('modalOverlay').classList.add('hidden');
             document.getElementById('userBadge').textContent = user.nome;
+            loadChatHistory();
             loadDiary();
           }
         })
@@ -395,6 +395,28 @@
       messagesEl.appendChild(msg);
       messagesEl.scrollTop = messagesEl.scrollHeight;
       return { bubble, cursor };
+    }
+
+    // ── Carregar histórico do chat ──
+    async function loadChatHistory() {
+      if (!currentUser) return;
+      try {
+        const res = await fetch(`/chat/history?user_id=${currentUser.id}`);
+        const { history } = await res.json();
+        if (!history || history.length === 0) return;
+
+        const divider = document.createElement('div');
+        divider.className = 'history-divider';
+        divider.textContent = '— últimas mensagens —';
+        messagesEl.appendChild(divider);
+
+        history.forEach(row => {
+          addMessage('user', row.user_message);
+          addMessage('bot', row.ai_response);
+        });
+
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      } catch (_) {}
     }
 
     async function sendMessage() {

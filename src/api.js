@@ -3,7 +3,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import 'dotenv/config';
 
-import { saveUser, getUser, saveFoodEntry, getAllFoodEntries, deleteFoodEntry } from './db.js';
+import { saveUser, getUser, saveFoodEntry, getAllFoodEntries, deleteFoodEntry, saveChatMessage, getRecentChatHistory } from './db.js';
 import { chatStream, extractIncrementalText } from './geminiClient.js';
 import { parseNutritionFromText } from './nutriParser.js';
 
@@ -12,9 +12,7 @@ const app = express();
 app.use(express.json());
 app.use(express.static(join(__dirname, '../public')));
 
-const conversationHistory = [];
-
-// Criar utilizador (questionário inicial)
+// Criar utilizador
 app.post('/users', async (req, res) => {
   const { nome, idade, peso, altura, objetivo } = req.body;
   if (!nome || !idade || !peso || !altura || !objetivo) {
@@ -40,7 +38,19 @@ app.get('/users/:id', async (req, res) => {
   }
 });
 
-// Streaming chat com contexto e dados do utilizador
+// Obter últimas 5 mensagens do chat
+app.get('/chat/history', async (req, res) => {
+  const userId = req.query.user_id ? parseInt(req.query.user_id) : null;
+  if (!userId) return res.status(400).json({ error: 'user_id é obrigatório.' });
+  try {
+    const history = await getRecentChatHistory(userId, 5);
+    res.json({ history });
+  } catch (error) {
+    res.status(500).json({ error: error.message || error });
+  }
+});
+
+// Streaming chat com contexto persistente
 app.get('/chat', async (req, res) => {
   const message = String(req.query.message || '').trim();
   const userId = req.query.user_id ? parseInt(req.query.user_id) : null;
@@ -55,7 +65,8 @@ app.get('/chat', async (req, res) => {
 
   try {
     const user = userId ? await getUser(userId) : null;
-    const stream = await chatStream(message, conversationHistory.slice(-5), user);
+    const history = userId ? await getRecentChatHistory(userId, 5) : [];
+    const stream = await chatStream(message, history, user);
     let aiResponse = '';
 
     for await (const chunk of stream) {
@@ -65,7 +76,7 @@ app.get('/chat', async (req, res) => {
       res.write(`data: ${JSON.stringify(textChunk)}\n\n`);
     }
 
-    conversationHistory.push({ user_message: message, ai_response: aiResponse });
+    if (userId) await saveChatMessage(userId, message, aiResponse);
     res.write('event: done\ndata: [DONE]\n\n');
   } catch (error) {
     console.error('Erro no streaming:', error);

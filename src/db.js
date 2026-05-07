@@ -36,6 +36,15 @@ db.serialize(() => {
       created_at TEXT NOT NULL
     )`
   );
+  db.run(
+    `CREATE TABLE IF NOT EXISTS chat_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      user_message TEXT NOT NULL,
+      ai_response TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`
+  );
 });
 
 function run(sql, params = []) {
@@ -93,4 +102,20 @@ async function deleteFoodEntry(id) {
   return run(`DELETE FROM food_diary WHERE id = ?`, [id]);
 }
 
-export { db, saveUser, getUser, saveFoodEntry, getAllFoodEntries, deleteFoodEntry };
+async function saveChatMessage(userId, userMessage, aiResponse) {
+  const createdAt = new Date().toISOString();
+  return run(
+    `INSERT INTO chat_history (user_id, user_message, ai_response, created_at) VALUES (?, ?, ?, ?)`,
+    [userId, userMessage, aiResponse, createdAt]
+  );
+}
+
+async function getRecentChatHistory(userId, limit = 5) {
+  const rows = await all(
+    `SELECT user_message, ai_response FROM chat_history WHERE user_id = ? ORDER BY id DESC LIMIT ?`,
+    [userId, limit]
+  );
+  return rows.reverse();
+}
+
+export { db, saveUser, getUser, saveFoodEntry, getAllFoodEntries, deleteFoodEntry, saveChatMessage, getRecentChatHistory };
