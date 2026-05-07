@@ -12,6 +12,15 @@ const app = express();
 app.use(express.json());
 app.use(express.static(join(__dirname, '../public')));
 
+// ── Limpar markdown da resposta ───────────────────────────────────────────────
+function limparMarkdown(texto) {
+  return texto
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/#{1,6}\s/g, '')
+    .trim();
+}
+
 // Criar utilizador
 app.post('/users', async (req, res) => {
   const { nome, idade, peso, altura, objetivo } = req.body;
@@ -139,10 +148,10 @@ app.get('/chat', async (req, res) => {
 
     if (moodMatch) {
       res.write(`event: mood\ndata: ${JSON.stringify(moodMatch[1])}\n\n`);
-      const rest = lines.slice(1).join('\n').trimStart();
+      const rest = limparMarkdown(lines.slice(1).join('\n').trimStart());
       if (rest) res.write(`data: ${JSON.stringify(rest)}\n\n`);
     } else {
-      res.write(`data: ${JSON.stringify(fullText)}\n\n`);
+      res.write(`data: ${JSON.stringify(limparMarkdown(fullText))}\n\n`);
     }
 
     if (userId) await saveChatMessage(userId, message, fullText);
@@ -163,7 +172,7 @@ app.post('/nutrition/parse', async (req, res) => {
   try {
     const entry = await parseNutritionFromText(text);
     const result = await saveFoodEntry(user_id || 1, entry.alimento, entry.kcal, entry.proteina, entry.carboidratos, entry.gordura);
-    entry.id = result.lastID; // ← adiciona o id gerado à entry
+    entry.id = result.lastID;
     res.json({ entry });
   } catch (error) {
     res.status(500).json({ error: error.message || error });
