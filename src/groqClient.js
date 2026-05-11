@@ -1,8 +1,25 @@
 import Groq from 'groq-sdk';
 import 'dotenv/config';
 
-// cliente da api groq (chave lida do .env)
-const client = new Groq({ apiKey: process.env.GROQ_API_KEY });
+// cliente da api groq — criado de forma "preguiçosa" (lazy)
+// motivo: se a chave não estiver definida, o new Groq() rebenta logo no import
+// e o servidor inteiro não arranca. assim só falha quando alguém usa /chat
+let client = null;
+
+// devolve o cliente groq, criando-o na primeira chamada
+// se a chave estiver em falta, lança um erro tipado (code: 'NO_API_KEY')
+// para o api.js poder distinguir e dar mensagem amigável ao user
+function getClient() {
+  if (client) return client;                          // já foi criado antes, reutiliza
+  if (!process.env.GROQ_API_KEY) {
+    const err = new Error('GROQ_API_KEY em falta no .env');
+    err.code = 'NO_API_KEY';                          // marcador para tratamento específico
+    throw err;
+  }
+  client = new Groq({ apiKey: process.env.GROQ_API_KEY });
+  return client;
+}
+
 // modelo usado para todas as chamadas (rápido e bom em pt)
 const MODEL = 'llama-3.3-70b-versatile';
 
@@ -192,7 +209,8 @@ async function chatWithTools(userMessage, history = [], user = null) {
     { role: 'user', content: userMessage }
   ];
 
-  const response = await client.chat.completions.create({
+  // getClient() lança 'NO_API_KEY' se a chave faltar — apanhado em api.js
+  const response = await getClient().chat.completions.create({
     model: MODEL,
     messages,
     tools: TOOLS,             // ferramentas disponíveis
@@ -230,7 +248,8 @@ async function generateJson(prompt) {
     { role: 'user', content: prompt }
   ];
 
-  const response = await client.chat.completions.create({
+  // também usa getClient() para falhar de forma controlada se faltar chave
+  const response = await getClient().chat.completions.create({
     model: MODEL,
     messages,
     stream: false,

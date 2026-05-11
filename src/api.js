@@ -7,6 +7,12 @@ import { saveUser, getUser, saveFoodEntry, getAllFoodEntries, deleteFoodEntry, s
 import { chatWithTools, generateJson } from './groqClient.js';
 import { parseNutritionFromText } from './nutriParser.js';
 
+// aviso no arranque se a chave da ia não estiver configurada
+// (o servidor arranca na mesma — só as rotas /chat e /nutrition/parse é que falham)
+if (!process.env.GROQ_API_KEY) {
+  console.warn('⚠️  GROQ_API_KEY não definida no .env — /chat e /nutrition/parse vão devolver erro até configurares.');
+}
+
 // caminho da pasta deste ficheiro (para servir os estáticos do public)
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -23,6 +29,26 @@ function limparMarkdown(texto) {
     .replace(/\*(.*?)\*/g, '$1')       // tira *itálico*
     .replace(/#{1,6}\s/g, '')          // tira # títulos
     .trim();
+}
+
+// ── traduzir erros da ia em mensagens amigáveis para o user ──────────────────
+// recebe o erro apanhado num try/catch e devolve uma string em pt-pt
+// usa o code (definido por nós) ou o status http (do groq-sdk) para decidir
+function mensagemErroIA(err) {
+  if (err.code === 'NO_API_KEY') {
+    return '⚠️ O serviço de IA não está configurado. Avisa o admin para definir a GROQ_API_KEY no .env.';
+  }
+  if (err.status === 401) {
+    return '⚠️ A chave de IA é inválida ou expirou. Avisa o admin.';
+  }
+  if (err.status === 429) {
+    return '⚠️ Demasiados pedidos à IA. Espera um minuto e tenta novamente.';
+  }
+  if (err.status >= 500 && err.status < 600) {
+    return '⚠️ A IA está temporariamente indisponível. Tenta daqui a pouco.';
+  }
+  // qualquer outro caso (rede, timeout, erro inesperado)
+  return '⚠️ Não consegui contactar a IA. Tenta novamente.';
 }
 
 // criar utilizador (chamado pelo modal inicial)
@@ -183,9 +209,16 @@ app.get('/chat', async (req, res) => {
     res.write('event: done\ndata: [DONE]\n\n');
 
   } catch (error) {
+    // log técnico nos servidor (stack + mensagem)
     console.error('Erro no chat:', error);
-    // avisa o frontend que algo correu mal
-    res.write(`event: error\ndata: ${JSON.stringify(error.message || 'Erro interno')}\n\n`);
+    // mensagem amigável para o user (em vez de stack trace)
+    const userMsg = mensagemErroIA(error);
+    // envia como data normal para aparecer na bolha do chat
+    res.write(`data: ${JSON.stringify(userMsg)}\n\n`);
+    // também envia evento 'error' para o frontend poder estilizar diferente se quiser
+    res.write(`event: error\ndata: ${JSON.stringify(userMsg)}\n\n`);
+    // sinaliza fim para o frontend não ficar à espera de mais chunks
+    res.write('event: done\ndata: [DONE]\n\n');
   } finally {
     // fecha sempre o stream no fim
     res.end();
@@ -205,7 +238,14 @@ app.post('/nutrition/parse', async (req, res) => {
     entry.id = result.lastID;
     res.json({ entry });
   } catch (error) {
-    res.status(500).json({ error: error.message || error });
+    console.error('Erro em /nutrition/parse:', error);
+    // se o erro veio da ia, devolve 503 (service unavailable) com mensagem amigável
+    // 503 indica ao frontend que a falha é temporária / externa, não bug da app
+    if (error.code === 'NO_API_KEY' || error.status >= 400) {
+      return res.status(503).json({ error: mensagemErroIA(error), ai_unavailable: true });
+    }
+    // outros erros (ex: bd) — 500 genérico
+    res.status(500).json({ error: error.message || String(error) });
   }
 });
 

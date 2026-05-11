@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \"import\\('dotenv/config'\\).then\\(\\(\\) => console.log\\('GROQ_API_KEY:', process.env.GROQ_API_KEY ? 'PRESENTE \\(' + process.env.GROQ_API_KEY.slice\\(0,8\\) + '...\\)' : 'AUSENTE'\\)\\)\")",
+      "Bash(xxd \"c:/Users/Abel Pinto/projeto m7 nutribot/.env\")",
+      "Bash(tasklist)",
+      "Bash(netstat -ano)"
+    ]
+  }
+}

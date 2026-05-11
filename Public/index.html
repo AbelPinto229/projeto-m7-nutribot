@@ -106,6 +106,10 @@
     </div>
 
     <script>
+      // tempo máximo (ms) à espera da ia antes de desistir
+      // 20s cobre 99% dos casos normais sem deixar o user à espera para sempre
+      const IA_TIMEOUT_MS = 20000;
+
       // user logado em memória (preenchido via auto-login ou pelo modal)
       let currentUser = null;
 
@@ -334,11 +338,23 @@
         let wasToolCall = false;        // se foi tool, não chama /nutrition/parse depois
         let pendingEventType = null;    // tipo do próximo "data:" (mood, tool_action, etc.)
 
+        // controller para abortar o stream se ultrapassar o timeout
+        const controller = new AbortController();
+        // reinicia o cronómetro a cada chunk recebido (timeout de inatividade)
+        // assim respostas longas mas contínuas não são canceladas
+        let timeoutId = setTimeout(() => controller.abort(), IA_TIMEOUT_MS);
+        const resetTimeout = () => {
+          clearTimeout(timeoutId);
+          timeoutId = setTimeout(() => controller.abort(), IA_TIMEOUT_MS);
+        };
+
         try {
           const userId = currentUser?.id || "";
           // abre o stream — fetch normal porque eventsource não suporta query auth
+          // signal permite cancelar o pedido se demorar demasiado
           const res = await fetch(
             `/chat?message=${encodeURIComponent(text)}&user_id=${userId}`,
+            { signal: controller.signal },
           );
           const reader = res.body.getReader();
           const decoder = new TextDecoder();
@@ -347,6 +363,8 @@
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
+            // chegou actividade → reinicia o relógio do timeout
+            resetTimeout();
 
             // bytes → texto e separa linha a linha (formato sse)
             const raw = decoder.decode(value, { stream: true });
@@ -367,6 +385,18 @@
                 if (pendingEventType === "mood") {
                   try {
                     applyMood(JSON.parse(data));
+                  } catch (_) {}
+                  pendingEventType = null;
+                  continue;
+                }
+
+                // evento de erro vindo do backend (ex: chave em falta, rate-limit)
+                // mostra a mensagem na própria bolha com estilo de aviso
+                if (pendingEventType === "error") {
+                  try {
+                    const errMsg = JSON.parse(data);
+                    bubble.textContent = errMsg;
+                    bubble.classList.add("bubble-error");  // css opcional para estilizar a vermelho
                   } catch (_) {}
                   pendingEventType = null;
                   continue;
@@ -438,7 +468,8 @@
             }
           }
 
-          // resposta terminada — remove o cursor piscante
+          // resposta terminada — limpa o timeout e remove o cursor piscante
+          clearTimeout(timeoutId);
           cursor.remove();
 
           // se não foi tool e o texto parece descrição de comida, extrai macros
@@ -446,7 +477,15 @@
             await parseAndSaveFood(text);
           }
         } catch (err) {
-          bubble.textContent = "Erro ao contactar o servidor.";
+          clearTimeout(timeoutId);
+          // distingue timeout (AbortError) de outros erros de rede
+          if (err.name === "AbortError") {
+            bubble.textContent =
+              "⏱️ A IA demorou demasiado a responder. Tenta novamente.";
+            bubble.classList.add("bubble-error");
+          } else {
+            bubble.textContent = "Erro ao contactar o servidor.";
+          }
           cursor.remove();
         }
 
@@ -474,17 +513,40 @@
 
       // envia o texto ao backend que extrai macros via ia e grava no diário
       async function parseAndSaveFood(text) {
+        // timeout absoluto — aqui não há stream, ou responde dentro do prazo ou aborta
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), IA_TIMEOUT_MS);
+
         try {
           const res = await fetch("/nutrition/parse", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ text, user_id: currentUser?.id || 1 }),
+            signal: controller.signal,
           });
-          if (!res.ok) return;
+          clearTimeout(timeoutId);
+
+          // 503 = ia indisponível (chave em falta, rate-limit, etc.)
+          // avisa o user em vez de falhar em silêncio
+          if (res.status === 503) {
+            const { error } = await res.json().catch(() => ({}));
+            addMessage("bot", error || "⚠️ Não consegui registar a refeição (IA indisponível).");
+            return;
+          }
+          if (!res.ok) return;  // outros erros — segue em silêncio
           const { entry } = await res.json();
           // adiciona ao diário no painel lateral
           if (entry) addDiaryItem(entry);
-        } catch (_) {}
+        } catch (err) {
+          clearTimeout(timeoutId);
+          // timeout específico → avisa o user; outros erros ficam em silêncio
+          if (err.name === "AbortError") {
+            addMessage(
+              "bot",
+              "⏱️ Não consegui registar a refeição no diário (IA demasiado lenta).",
+            );
+          }
+        }
       }
 
       // apaga uma entrada manualmente (botão ✕ ao lado da refeição)
