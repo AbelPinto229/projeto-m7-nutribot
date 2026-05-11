@@ -4,7 +4,12 @@
       "Bash(node -e \"import\\('dotenv/config'\\).then\\(\\(\\) => console.log\\('GROQ_API_KEY:', process.env.GROQ_API_KEY ? 'PRESENTE \\(' + process.env.GROQ_API_KEY.slice\\(0,8\\) + '...\\)' : 'AUSENTE'\\)\\)\")",
       "Bash(xxd \"c:/Users/Abel Pinto/projeto m7 nutribot/.env\")",
       "Bash(tasklist)",
-      "Bash(netstat -ano)"
+      "Bash(netstat -ano)",
+      "Bash(cat /tmp/srv.log)",
+      "Read(//tmp/**)",
+      "Bash(curl -s \"http://localhost:3000/\")",
+      "Bash(curl -s -N \"http://localhost:3000/chat?message=ola&user_id=1&delay=1\" --max-time 3)",
+      "Bash(node src/api.js)"
     ]
   }
 }

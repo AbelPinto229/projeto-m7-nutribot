@@ -154,13 +154,6 @@ app.get('/chat', async (req, res) => {
     const user = userId ? await getUser(userId) : null;
     const history = userId ? await getRecentChatHistory(userId, 5) : [];
 
-    // ⚠️ modo de teste: ?delay=1 simula uma ia lenta (25s)
-    // útil para validar o timeout do frontend — remover em produção
-    if (req.query.delay === '1') {
-      console.log('🐢 modo lento ativado — a aguardar 25s antes de chamar a ia');
-      await new Promise(resolve => setTimeout(resolve, 25000));
-    }
-
     // chamada à ia (pode devolver texto OU pedido de tool call)
     const result = await chatWithTools(message, history, user);
 
