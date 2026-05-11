@@ -7,27 +7,33 @@ import { saveUser, getUser, saveFoodEntry, getAllFoodEntries, deleteFoodEntry, s
 import { chatWithTools, generateJson } from './groqClient.js';
 import { parseNutritionFromText } from './nutriParser.js';
 
+// caminho da pasta deste ficheiro (para servir os estáticos do public)
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
+// permite ler json no body dos pedidos
 app.use(express.json());
+// serve o frontend (html/css/js) a partir da pasta public
 app.use(express.static(join(__dirname, '../public')));
 
-// ── Limpar markdown da resposta ───────────────────────────────────────────────
+// ── limpar markdown da resposta ───────────────────────────────────────────────
+// a ia às vezes mete **negrito** ou # títulos — tiramos antes de mostrar
 function limparMarkdown(texto) {
   return texto
-    .replace(/\*\*(.*?)\*\*/g, '$1')
-    .replace(/\*(.*?)\*/g, '$1')
-    .replace(/#{1,6}\s/g, '')
+    .replace(/\*\*(.*?)\*\*/g, '$1')   // tira **bold**
+    .replace(/\*(.*?)\*/g, '$1')       // tira *itálico*
+    .replace(/#{1,6}\s/g, '')          // tira # títulos
     .trim();
 }
 
-// Criar utilizador
+// criar utilizador (chamado pelo modal inicial)
 app.post('/users', async (req, res) => {
   const { nome, idade, peso, altura, objetivo } = req.body;
+  // validação: todos os campos são obrigatórios
   if (!nome || !idade || !peso || !altura || !objetivo) {
     return res.status(400).json({ error: 'Todos os campos são obrigatórios.' });
   }
   try {
+    // grava o user e devolve o registo completo (já com id)
     const result = await saveUser(nome, idade, peso, altura, objetivo);
     const user = await getUser(result.lastID);
     res.json({ user });
@@ -36,7 +42,7 @@ app.post('/users', async (req, res) => {
   }
 });
 
-// Obter utilizador
+// obter utilizador (auto-login via localstorage)
 app.get('/users/:id', async (req, res) => {
   try {
     const user = await getUser(req.params.id);
@@ -47,7 +53,7 @@ app.get('/users/:id', async (req, res) => {
   }
 });
 
-// Obter histórico do chat
+// obter histórico do chat (últimas 5 mensagens) para repor no ecrã
 app.get('/chat/history', async (req, res) => {
   const userId = req.query.user_id ? parseInt(req.query.user_id) : null;
   if (!userId) return res.status(400).json({ error: 'user_id é obrigatório.' });
@@ -59,11 +65,13 @@ app.get('/chat/history', async (req, res) => {
   }
 });
 
-// ── Executar tool call no backend ─────────────────────────────────────────────
+// ── executar tool call no backend ─────────────────────────────────────────────
+// a ia decide qual tool chamar, mas a execução real é cá (segurança + acesso à bd)
 async function executeTool(toolName, args, userId) {
   switch (toolName) {
 
     case 'delete_food_entry': {
+      // procura por nome (match parcial em qualquer um dos sentidos)
       const entries = await getAllFoodEntries(userId);
       const nomeProcurado = (args.nome || '').toLowerCase();
       const found = entries.find(e =>
@@ -72,12 +80,14 @@ async function executeTool(toolName, args, userId) {
       );
       if (found) {
         await deleteFoodEntry(found.id);
+        // devolve o id para o frontend remover o elemento do dom
         return { success: true, deleted: found, action: 'delete_one', id: found.id };
       }
       return { success: false, error: `Não encontrei "${args.nome}" no diário.` };
     }
 
     case 'delete_last_food_entry': {
+      // apaga a refeição mais recente
       const last = await getLastFoodEntry(userId);
       if (last) {
         await deleteFoodEntry(last.id);
@@ -87,16 +97,19 @@ async function executeTool(toolName, args, userId) {
     }
 
     case 'delete_all_food_entries': {
+      // limpa o diário inteiro do user
       await deleteAllFoodEntries(userId);
       return { success: true, action: 'delete_all' };
     }
 
     default:
+      // segurança: se a ia inventar um nome de função
       return { success: false, error: `Função desconhecida: ${toolName}` };
   }
 }
 
-// ── Chat principal ─────────────────────────────────────────────────────────────
+// ── chat principal ─────────────────────────────────────────────────────────────
+// usa server-sent events (sse) para fazer streaming da resposta para o frontend
 app.get('/chat', async (req, res) => {
   const message = String(req.query.message || '').trim();
   const userId = req.query.user_id ? parseInt(req.query.user_id) : null;
@@ -104,27 +117,32 @@ app.get('/chat', async (req, res) => {
     return res.status(400).json({ error: 'Campo "message" é obrigatório.' });
   }
 
+  // headers obrigatórios para abrir um stream sse
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
 
   try {
+    // perfil do user + histórico recente para dar contexto à ia
     const user = userId ? await getUser(userId) : null;
     const history = userId ? await getRecentChatHistory(userId, 5) : [];
 
+    // chamada à ia (pode devolver texto OU pedido de tool call)
     const result = await chatWithTools(message, history, user);
 
-    // ── Tool call: eliminar refeição ─────────────────────────────────────
+    // ── tool call: eliminar refeição ─────────────────────────────────────
     if (result.type === 'tool_call') {
       let confirmText = '';
 
       for (const tc of result.tool_calls) {
+        // executa a função pedida pela ia
         const toolResult = await executeTool(tc.name, tc.args, userId);
 
-        // Notifica o frontend para atualizar o DOM
+        // notifica o frontend para atualizar o dom (remover item do diário)
         res.write(`event: tool_action\ndata: ${JSON.stringify(toolResult)}\n\n`);
 
+        // monta a mensagem de confirmação a mostrar no chat
         if (!toolResult.success) {
           confirmText = toolResult.error;
         } else if (toolResult.action === 'delete_all') {
@@ -134,44 +152,56 @@ app.get('/chat', async (req, res) => {
         }
       }
 
+      // envia a confirmação como mensagem normal
       res.write(`data: ${JSON.stringify(confirmText)}\n\n`);
       if (userId) await saveChatMessage(userId, message, confirmText);
+      // sinal de fim do stream
       res.write('event: done\ndata: [DONE]\n\n');
       return;
     }
 
-    // ── Resposta normal: extrai MOOD e envia ─────────────────────────────
+    // ── resposta normal: extrai mood e envia ─────────────────────────────
     const fullText = result.text;
     const lines = fullText.split('\n');
     const firstLine = lines[0].trim();
+    // a primeira linha deve estar no formato "MOOD:happy" (ou ok/stressed/angry)
     const moodMatch = firstLine.match(/^MOOD:(happy|ok|stressed|angry)$/);
 
     if (moodMatch) {
+      // envia o mood como evento separado (o frontend muda o tema visual)
       res.write(`event: mood\ndata: ${JSON.stringify(moodMatch[1])}\n\n`);
+      // envia o resto do texto (sem a linha do mood) já sem markdown
       const rest = limparMarkdown(lines.slice(1).join('\n').trimStart());
       if (rest) res.write(`data: ${JSON.stringify(rest)}\n\n`);
     } else {
+      // se não tiver mood, manda o texto todo
       res.write(`data: ${JSON.stringify(limparMarkdown(fullText))}\n\n`);
     }
 
+    // persiste a conversa para reaparecer numa próxima sessão
     if (userId) await saveChatMessage(userId, message, fullText);
     res.write('event: done\ndata: [DONE]\n\n');
 
   } catch (error) {
     console.error('Erro no chat:', error);
+    // avisa o frontend que algo correu mal
     res.write(`event: error\ndata: ${JSON.stringify(error.message || 'Erro interno')}\n\n`);
   } finally {
+    // fecha sempre o stream no fim
     res.end();
   }
 });
 
-// Extrair macros e guardar no diário
+// extrair macros e guardar no diário
+// chamado pelo frontend quando o texto parece descrever comida
 app.post('/nutrition/parse', async (req, res) => {
   const { text, user_id } = req.body;
   if (!text) return res.status(400).json({ error: 'Campo "text" é obrigatório.' });
   try {
+    // a ia devolve { alimento, kcal, proteina, carboidratos, gordura }
     const entry = await parseNutritionFromText(text);
     const result = await saveFoodEntry(user_id || 1, entry.alimento, entry.kcal, entry.proteina, entry.carboidratos, entry.gordura);
+    // junta o id gerado para o frontend o usar no botão de apagar
     entry.id = result.lastID;
     res.json({ entry });
   } catch (error) {
@@ -179,7 +209,7 @@ app.post('/nutrition/parse', async (req, res) => {
   }
 });
 
-// Obter diário
+// obter diário (chamado no arranque para repor as refeições do dia)
 app.get('/nutrition/diary', async (req, res) => {
   const userId = req.query.user_id ? parseInt(req.query.user_id) : 1;
   try {
@@ -190,7 +220,7 @@ app.get('/nutrition/diary', async (req, res) => {
   }
 });
 
-// Apagar entrada manual (botão ✕)
+// apagar entrada manual (botão ✕ ao lado de cada item)
 app.delete('/nutrition/diary/:id', async (req, res) => {
   try {
     await deleteFoodEntry(req.params.id);
@@ -200,6 +230,7 @@ app.delete('/nutrition/diary/:id', async (req, res) => {
   }
 });
 
+// arranque do servidor
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`NutriBot rodando em http://localhost:${PORT}`);
