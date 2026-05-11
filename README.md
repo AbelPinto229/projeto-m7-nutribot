@@ -59,7 +59,7 @@ nutribot/
 ├── src/
 │   ├── api.js          # Servidor Express principal
 │   ├── db.js           # SQLite (food_diary)
-│   ├── geminiClient.js # Cliente Gemini com streaming
+│   ├── groqClient.js   # Cliente Groq com streaming
 │   └── nutriParser.js  # Parser de macros com Zod
 ├── public/
 │   └── index.html      # Frontend (chat + diário)

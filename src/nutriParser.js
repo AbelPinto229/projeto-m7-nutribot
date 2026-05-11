@@ -1,4 +1,4 @@
-import { generateJson } from './geminiClient.js';
+import { generateJson } from './groqClient.js';
 
 async function parseNutritionFromText(text) {
   const prompt = `Analisa esta refeição e devolve APENAS um objeto JSON válido com estes campos exatos:

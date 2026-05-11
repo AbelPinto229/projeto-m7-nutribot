@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import 'dotenv/config';
 
 import { saveUser, getUser, saveFoodEntry, getAllFoodEntries, deleteFoodEntry, saveChatMessage, getRecentChatHistory, deleteAllFoodEntries, getLastFoodEntry } from './db.js';
-import { chatWithTools, generateJson } from './geminiClient.js';
+import { chatWithTools, generateJson } from './groqClient.js';
 import { parseNutritionFromText } from './nutriParser.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
