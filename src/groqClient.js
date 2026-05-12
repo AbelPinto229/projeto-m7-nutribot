@@ -23,6 +23,10 @@ function getClient() {
 // modelo usado para todas as chamadas (rápido e bom em pt)
 const MODEL = 'llama-3.3-70b-versatile';
 
+// tempo máximo (ms) à espera da resposta da ia antes de desistir
+// se estourar, o groq-sdk lança um erro → api.js mostra "Não consegui contactar a IA"
+const AI_TIMEOUT_MS = 20000;
+
 // definição das tools (funções) que a ia pode chamar
 // só são executadas no backend — a ia apenas pede a chamada
 const TOOLS = [
@@ -218,7 +222,7 @@ async function chatWithTools(userMessage, history = [], user = null) {
     stream: false,            // resposta completa de uma vez
     max_tokens: 600,
     temperature: 0.3          // pouco criativo, mais consistente
-  });
+  }, { timeout: AI_TIMEOUT_MS });
 
   const choice = response.choices[0];
 
@@ -256,7 +260,7 @@ async function generateJson(prompt) {
     max_tokens: 400,
     temperature: 0,                              // determinístico (mesma entrada → mesma saída)
     response_format: { type: 'json_object' }     // groq garante json válido
-  });
+  }, { timeout: AI_TIMEOUT_MS });
 
   return { text: response.choices[0].message.content };
 }
