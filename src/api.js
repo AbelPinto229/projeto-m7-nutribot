@@ -3,9 +3,10 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import 'dotenv/config';
 
-import { saveUser, getUser, saveFoodEntry, getAllFoodEntries, deleteFoodEntry, saveChatMessage, getRecentChatHistory, deleteAllFoodEntries, getLastFoodEntry } from './db.js';
-import { chatWithTools, generateJson } from './groqClient.js';
+import { saveUser, getUser, saveFoodEntry, getAllFoodEntries, deleteFoodEntry, getRecentChatHistory } from './db.js';
 import { parseNutritionFromText } from './nutriParser.js';
+import { handleChatMessage } from './chatService.js';
+import { mensagemErroIA } from './errors.js';
 
 // aviso no arranque se a chave da ia não estiver configurada
 // (o servidor arranca na mesma — só as rotas /chat e /nutrition/parse é que falham)
@@ -20,36 +21,6 @@ const app = express();
 app.use(express.json());
 // serve o frontend (html/css/js) a partir da pasta public
 app.use(express.static(join(__dirname, '../public')));
-
-// ── limpar markdown da resposta ───────────────────────────────────────────────
-// a ia mete **negrito** ou # títulos — tiramos antes de mostrar
-function limparMarkdown(texto) {
-  return texto
-    .replace(/\*\*(.*?)\*\*/g, '$1')   // tira **bold**
-    .replace(/\*(.*?)\*/g, '$1')       // tira *itálico*
-    .replace(/#{1,6}\s/g, '')          // tira # títulos
-    .trim();
-}
-
-// ── traduzir erros da ia em mensagens amigáveis para o user ──────────────────
-// recebe o erro apanhado num try/catch e devolve uma string em pt-pt
-// usa o code (definido por nós) ou o status http (do groq-sdk) para decidir
-function mensagemErroIA(err) {
-  if (err.code === 'NO_API_KEY') {
-    return '⚠️ O serviço de IA não está configurado. Avisa o admin';
-  }
-  if (err.status === 401) {
-    return '⚠️ A chave de IA é inválida ou expirou. Avisa o admin.';
-  }
-  if (err.status === 429) {
-    return '⚠️ Demasiados pedidos à IA. Espera um minuto e tenta novamente.';
-  }
-  if (err.status >= 500 && err.status < 600) {
-    return '⚠️ A IA está temporariamente indisponível. Tenta daqui a pouco.';
-  }
-  // qualquer outro caso (rede, timeout, erro inesperado)
-  return '⚠️ Não consegui contactar a IA. Tenta novamente.';
-}
 
 // criar utilizador (chamado pelo modal inicial)
 app.post('/users', async (req, res) => {
@@ -91,51 +62,9 @@ app.get('/chat/history', async (req, res) => {
   }
 });
 
-// ── executar tool call no backend ─────────────────────────────────────────────
-// a ia decide qual tool chamar, mas a execução real é cá (segurança + acesso à bd)
-async function executeTool(toolName, args, userId) {
-  switch (toolName) {
-
-    case 'delete_food_entry': {
-      // procura por nome (match parcial em qualquer um dos sentidos)
-      const entries = await getAllFoodEntries(userId);
-      const nomeProcurado = (args.nome || '').toLowerCase();
-      const found = entries.find(e =>
-        e.alimento.toLowerCase().includes(nomeProcurado) ||
-        nomeProcurado.includes(e.alimento.toLowerCase())
-      );
-      if (found) {
-        await deleteFoodEntry(found.id);
-        // devolve o id para o frontend remover o elemento do dom
-        return { success: true, deleted: found, action: 'delete_one', id: found.id };
-      }
-      return { success: false, error: `Não encontrei "${args.nome}" no diário.` };
-    }
-
-    case 'delete_last_food_entry': {
-      // apaga a refeição mais recente
-      const last = await getLastFoodEntry(userId);
-      if (last) {
-        await deleteFoodEntry(last.id);
-        return { success: true, deleted: last, action: 'delete_one', id: last.id };
-      }
-      return { success: false, error: 'Não há refeições no diário.' };
-    }
-
-    case 'delete_all_food_entries': {
-      // limpa o diário inteiro do user
-      await deleteAllFoodEntries(userId);
-      return { success: true, action: 'delete_all' };
-    }
-
-    default:
-      // segurança: se a ia inventar um nome de função
-      return { success: false, error: `Função desconhecida: ${toolName}` };
-  }
-}
-
 // ── chat principal ─────────────────────────────────────────────────────────────
-// usa server-sent events (sse) para fazer streaming da resposta para o frontend
+// usa server-sent events (sse) para fazer streaming da resposta para o frontend.
+// a lógica vive em chatService.js — aqui só traduzimos os eventos dele para sse.
 app.get('/chat', async (req, res) => {
   const message = String(req.query.message || '').trim();
   const userId = req.query.user_id ? parseInt(req.query.user_id) : null;
@@ -149,67 +78,21 @@ app.get('/chat', async (req, res) => {
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
 
-  try {
-    // perfil do user + histórico recente para dar contexto à ia
-    const user = userId ? await getUser(userId) : null;
-    const history = userId ? await getRecentChatHistory(userId, 5) : [];
-
-    // chamada à ia (pode devolver texto OU pedido de tool call)
-    const result = await chatWithTools(message, history, user);
-
-    // ── tool call: eliminar refeição ─────────────────────────────────────
-    if (result.type === 'tool_call') {
-      let confirmText = '';
-
-      for (const tc of result.tool_calls) {
-        // executa a função pedida pela ia
-        const toolResult = await executeTool(tc.name, tc.args, userId);
-
-        // notifica o frontend para atualizar o dom (remover item do diário)
-        res.write(`event: tool_action\ndata: ${JSON.stringify(toolResult)}\n\n`);
-
-        // monta a mensagem de confirmação a mostrar no chat
-        if (!toolResult.success) {
-          confirmText = toolResult.error;
-        } else if (toolResult.action === 'delete_all') {
-          confirmText = 'Eliminei todas as refeições do teu diário de hoje.';
-        } else if (toolResult.action === 'delete_one') {
-          confirmText = `Eliminei "${toolResult.deleted.alimento}" do teu diário.`;
-        }
-      }
-
-      // envia a confirmação como mensagem normal
-      res.write(`data: ${JSON.stringify(confirmText)}\n\n`);
-      if (userId) await saveChatMessage(userId, message, confirmText);
-      // sinal de fim do stream
-      res.write('event: done\ndata: [DONE]\n\n');
-      return;
-    }
-
-    // ── resposta normal: extrai mood e envia ─────────────────────────────
-    const fullText = result.text;
-    const lines = fullText.split('\n');
-    const firstLine = lines[0].trim();
-    // a primeira linha deve estar no formato "MOOD:happy" (ou ok/stressed/angry)
-    const moodMatch = firstLine.match(/^MOOD:(happy|ok|stressed|angry)$/);
-
-    if (moodMatch) {
-      // envia o mood como evento separado (o frontend muda o tema visual)
-      res.write(`event: mood\ndata: ${JSON.stringify(moodMatch[1])}\n\n`);
-      // envia o resto do texto (sem a linha do mood) já sem markdown
-      const rest = limparMarkdown(lines.slice(1).join('\n').trimStart());
-      if (rest) res.write(`data: ${JSON.stringify(rest)}\n\n`);
+  // traduz os eventos do chatService em linhas sse
+  // 'message' vai como data normal; os outros (mood, tool_action) como evento nomeado
+  const emit = ({ event, data }) => {
+    if (event === 'message') {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
     } else {
-      // se não tiver mood, manda o texto todo
-      res.write(`data: ${JSON.stringify(limparMarkdown(fullText))}\n\n`);
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     }
+  };
 
-    // persiste a conversa para reaparecer numa próxima sessão
-    if (userId) await saveChatMessage(userId, message, fullText);
+  try {
+    await handleChatMessage(message, userId, emit);
     res.write('event: done\ndata: [DONE]\n\n');
-
   } catch (error) {
-    // log técnico nos servidor (stack + mensagem)
+    // log técnico no servidor (stack + mensagem)
     console.error('Erro no chat:', error);
     // mensagem amigável para o user (em vez de stack trace)
     const userMsg = mensagemErroIA(error);

@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sed -i '80,203d' src/groqClient.js)",
+      "Bash(sed -n '74,90p' src/groqClient.js)",
+      "Bash(node --check src/api.js)",
+      "Bash(node --check src/chatService.js)",
+      "Bash(node --check src/foodTools.js)",
+      "Bash(node --check src/errors.js)",
+      "Bash(node --check src/systemPrompt.js)",
+      "Bash(timeout 6 node src/api.js)",
+      "Bash(PORT=3999 timeout 6 node src/api.js)"
+    ]
+  }
+}

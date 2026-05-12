@@ -107,7 +107,6 @@
 
     <script>
       // tempo máximo (ms) à espera da ia antes de desistir
-      // 20s cobre 99% dos casos normais sem deixar o user à espera para sempre
       const IA_TIMEOUT_MS = 20000;
 
       // user logado em memória (preenchido via auto-login ou pelo modal)
@@ -341,7 +340,6 @@
         // controller para abortar o stream se ultrapassar o timeout
         const controller = new AbortController();
         // reinicia o cronómetro a cada chunk recebido (timeout de inatividade)
-        // assim respostas longas mas contínuas não são canceladas
         let timeoutId = setTimeout(() => controller.abort(), IA_TIMEOUT_MS);
         const resetTimeout = () => {
           clearTimeout(timeoutId);
@@ -513,7 +511,7 @@
 
       // envia o texto ao backend que extrai macros via ia e grava no diário
       async function parseAndSaveFood(text) {
-        // timeout absoluto — aqui não há stream, ou responde dentro do prazo ou aborta
+        // aqui não há stream — ou responde dentro do prazo ou aborta
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), IA_TIMEOUT_MS);
 
