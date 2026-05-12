@@ -22,7 +22,7 @@ app.use(express.json());
 app.use(express.static(join(__dirname, '../public')));
 
 // ── limpar markdown da resposta ───────────────────────────────────────────────
-// a ia às vezes mete **negrito** ou # títulos — tiramos antes de mostrar
+// a ia mete **negrito** ou # títulos — tiramos antes de mostrar
 function limparMarkdown(texto) {
   return texto
     .replace(/\*\*(.*?)\*\*/g, '$1')   // tira **bold**
