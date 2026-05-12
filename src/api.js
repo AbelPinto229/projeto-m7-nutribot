@@ -36,7 +36,7 @@ function limparMarkdown(texto) {
 // usa o code (definido por nós) ou o status http (do groq-sdk) para decidir
 function mensagemErroIA(err) {
   if (err.code === 'NO_API_KEY') {
-    return '⚠️ O serviço de IA não está configurado. Avisa o admin para definir a GROQ_API_KEY no .env.';
+    return '⚠️ O serviço de IA não está configurado. Avisa o admin';
   }
   if (err.status === 401) {
     return '⚠️ A chave de IA é inválida ou expirou. Avisa o admin.';
