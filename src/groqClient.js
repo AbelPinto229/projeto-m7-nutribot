@@ -96,7 +96,7 @@ async function chatWithTools(userMessage, history = [], user = null) {
     tool_choice: 'auto',      // deixa a ia decidir se chama tool
     stream: false,            // resposta completa de uma vez
     max_tokens: 600,
-    temperature: 0.3          // pouco criativo, mais consistente
+    temperature: 0.1          // para seguir as regras do prompt à risca
   }, { timeout: AI_TIMEOUT_MS });
 
   const choice = response.choices[0];
