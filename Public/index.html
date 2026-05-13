@@ -332,6 +332,18 @@
         sendBtn.disabled = true;  // bloqueia botão durante a resposta
         addMessage("user", text);
 
+        // se parece descrição de comida, valida ANTES via /nutrition/parse
+        // assim se for inválido (ex: "tubarão") mostramos só uma mensagem,
+        // sem gastar uma chamada à ia no /chat
+        if (looksLikeFood(text)) {
+          const valid = await parseAndSaveFood(text);
+          if (valid === false) {
+            // alimento inválido — a mensagem já foi mostrada por parseAndSaveFood
+            sendBtn.disabled = false;
+            return;
+          }
+        }
+
         const { bubble, cursor } = addBotStreamBubble();
         let fullResponse = "";          // acumulador do texto da ia
         let wasToolCall = false;        // se foi tool, não chama /nutrition/parse depois
@@ -478,10 +490,8 @@
           clearTimeout(timeoutId);
           cursor.remove();
 
-          // se não foi tool e o texto parece descrição de comida, extrai macros
-          if (!wasToolCall && looksLikeFood(text)) {
-            await parseAndSaveFood(text);
-          }
+          // nota: a extração de macros (parseAndSaveFood) já foi feita ANTES do /chat
+          // — assim se o alimento for inválido nem chegamos a chamar a ia para chat
         } catch (err) {
           clearTimeout(timeoutId);
           // distingue timeout (AbortError) de outros erros de rede
@@ -518,6 +528,8 @@
       }
 
       // envia o texto ao backend que extrai macros via ia e grava no diário
+      // devolve: false se o alimento for inválido (chamador não deve seguir para o /chat),
+      //         true caso contrário (alimento válido ou erro a ignorar)
       async function parseAndSaveFood(text) {
         // aqui não há stream — ou responde dentro do prazo ou aborta
         const controller = new AbortController();
@@ -533,25 +545,25 @@
           clearTimeout(timeoutId);
 
           // 503 = ia indisponível (chave em falta, rate-limit, etc.)
-          // avisa o user em vez de falhar em silêncio
           if (res.status === 503) {
             const { error } = await res.json().catch(() => ({}));
             addMessage("bot", error || "⚠️ Não consegui registar a refeição (IA indisponível).");
-            return;
+            return false;  // não vale a pena seguir para o /chat — vai dar o mesmo erro
           }
           // 400 com invalid_food = alimento rejeitado pela ia (ex: "tubarão")
-          // mostra ao user porque não foi adicionado ao diário
           if (res.status === 400) {
             const { error, invalid_food } = await res.json().catch(() => ({}));
             if (invalid_food) {
               addMessage("bot", `⚠️ Não posso registar isso no diário: ${error}`);
+              return false;  // sinaliza ao chamador que não deve chamar o /chat
             }
-            return;
+            return true;  // outro tipo de 400 — segue normalmente
           }
-          if (!res.ok) return;  // outros erros — segue em silêncio
+          if (!res.ok) return true;  // outros erros — segue em silêncio
           const { entry } = await res.json();
           // adiciona ao diário no painel lateral
           if (entry) addDiaryItem(entry);
+          return true;
         } catch (err) {
           clearTimeout(timeoutId);
           // timeout específico → avisa o user; outros erros ficam em silêncio
@@ -561,6 +573,7 @@
               "⏱️ Não consegui registar a refeição no diário (IA demasiado lenta).",
             );
           }
+          return true;  // não bloqueia o /chat por causa de um erro de rede
         }
       }
 
