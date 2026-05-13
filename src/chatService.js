@@ -47,6 +47,8 @@ async function handleChatMessage(message, userId, emit) {
         confirmText = 'Eliminei todas as refeições do teu diário de hoje.';
       } else if (toolResult.action === 'delete_one') {
         confirmText = `Eliminei "${toolResult.deleted.alimento}" do teu diário.`;
+      } else if (toolResult.action === 'replace_one') {
+        confirmText = `Troquei "${toolResult.old_alimento}" por "${toolResult.new_entry.alimento}" no teu diário.`;
       }
     }
 

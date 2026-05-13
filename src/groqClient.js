@@ -72,6 +72,28 @@ const TOOLS = [
         required: []
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'replace_food_entry',
+      // substitui uma refeição já registada por outra — só com palavras explícitas de troca
+      description: 'Substitui uma refeição já registada no diário por outra nova. Usa APENAS quando o utilizador usa palavras explícitas de troca como "troca", "substitui", "muda" seguidas de "X por Y" (ex: "troca os ovos por morangos e bife"). NUNCA usar quando o utilizador descreve simplesmente uma nova refeição com "comi", "almocei", "jantei" — nesses casos é só análise, não troca.',
+      parameters: {
+        type: 'object',
+        properties: {
+          nome: {
+            type: 'string',
+            description: 'Nome exato ou parcial da refeição a substituir, tal como aparece no diário (ex: "ovos e pão")'
+          },
+          novo_texto: {
+            type: 'string',
+            description: 'Descrição em linguagem natural do novo conteúdo da refeição (ex: "morangos e bife de frango")'
+          }
+        },
+        required: ['nome', 'novo_texto']
+      }
+    }
   }
 ];
 

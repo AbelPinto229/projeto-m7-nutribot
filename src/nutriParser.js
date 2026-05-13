@@ -1,15 +1,27 @@
 import { generateJson } from './groqClient.js';
 
 // recebe um texto em linguagem natural e devolve as macros estruturadas
+// se o texto não descrever um alimento real e seguro para consumo humano,
+// a ia devolve { "valido": false, "motivo": "..." } e nós atiramos um erro tipado
 async function parseNutritionFromText(text) {
   // prompt com o schema explícito para a ia respeitar
-  const prompt = `Analisa esta refeição e devolve APENAS um objeto JSON válido com estes campos exatos:
+  // inclui regra para rejeitar alimentos inválidos / não comestíveis
+  const prompt = `Analisa esta refeição e devolve APENAS um objeto JSON válido.
+
+Se o texto descrever um alimento REAL, comum e seguro para consumo humano, devolve:
 {
+  "valido": true,
   "alimento": "nome da refeição",
   "kcal": 000,
   "proteina": "00g",
   "carboidratos": "00g",
   "gordura": "00g"
+}
+
+Se o texto NÃO for um alimento real (ex: "tubarão", "pedra", "papel", "ar"), não for comestível, for tóxico, for uma marca abstrata, ou for uma piada/teste, devolve:
+{
+  "valido": false,
+  "motivo": "explicação curta do porquê"
 }
 
 Refeição: ${text}`;
@@ -20,8 +32,18 @@ Refeição: ${text}`;
   if (!raw) throw new Error('Resposta inválida.');
   // por precaução, tira cercas markdown caso a ia as ponha
   const clean = raw.replace(/```json|```/g, '').trim();
-  // converte para objeto js
-  return JSON.parse(clean);
+  const parsed = JSON.parse(clean);
+
+  // se a ia rejeitou o alimento, atira erro tipado para o api.js tratar
+  if (parsed.valido === false) {
+    const err = new Error(parsed.motivo || 'Esse alimento não é válido.');
+    err.code = 'INVALID_FOOD';
+    throw err;
+  }
+
+  // remove o campo "valido" (interno) antes de devolver
+  delete parsed.valido;
+  return parsed;
 }
 
 export { parseNutritionFromText };

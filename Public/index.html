@@ -441,6 +441,14 @@
                         itemEl.remove();
                         refreshTotal();
                       }
+                    } else if (action.action === "replace_one") {
+                      // remove o item antigo (pelo id) e adiciona o novo
+                      const oldEl = document.querySelector(
+                        `.diary-item[data-id="${action.old_id}"]`,
+                      );
+                      if (oldEl) oldEl.remove();
+                      if (action.new_entry) addDiaryItem(action.new_entry);
+                      refreshTotal();
                     }
                   } catch (_) {}
                   pendingEventType = null;
@@ -529,6 +537,15 @@
           if (res.status === 503) {
             const { error } = await res.json().catch(() => ({}));
             addMessage("bot", error || "⚠️ Não consegui registar a refeição (IA indisponível).");
+            return;
+          }
+          // 400 com invalid_food = alimento rejeitado pela ia (ex: "tubarão")
+          // mostra ao user porque não foi adicionado ao diário
+          if (res.status === 400) {
+            const { error, invalid_food } = await res.json().catch(() => ({}));
+            if (invalid_food) {
+              addMessage("bot", `⚠️ Não posso registar isso no diário: ${error}`);
+            }
             return;
           }
           if (!res.ok) return;  // outros erros — segue em silêncio

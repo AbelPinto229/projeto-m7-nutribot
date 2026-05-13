@@ -122,6 +122,10 @@ app.post('/nutrition/parse', async (req, res) => {
     res.json({ entry });
   } catch (error) {
     console.error('Erro em /nutrition/parse:', error);
+    // alimento rejeitado pela ia (ex: "tubarão", "pedra") — 400 e nada é gravado
+    if (error.code === 'INVALID_FOOD') {
+      return res.status(400).json({ error: error.message, invalid_food: true });
+    }
     // se o erro veio da ia, devolve 503 (service unavailable) com mensagem amigável
     // 503 indica ao frontend que a falha é temporária / externa, não bug da app
     if (error.code === 'NO_API_KEY' || error.status >= 400) {
