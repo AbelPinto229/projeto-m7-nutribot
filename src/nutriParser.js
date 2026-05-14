@@ -11,7 +11,7 @@ async function parseNutritionFromText(text) {
 Se o texto descrever um alimento REAL, comum e seguro para consumo humano, devolve:
 {
   "valido": true,
-  "alimento": "nome da refeição",
+  "alimento": "nome da refeição INCLUINDO quantidades — ex: '300g de bananas', '2 ovos mexidos', '150g de frango e 100g de arroz'. NUNCA omitas a quantidade se o utilizador a indicar.",
   "kcal": 000,
   "proteina": "00g",
   "carboidratos": "00g",
