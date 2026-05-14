@@ -29,9 +29,11 @@ async function handleChatMessage(message, userId, emit) {
   // chamada à ia (pode devolver texto OU pedido de tool call)
   const result = await chatWithTools(message, history, user);
 
-  // ── tool call: eliminar refeição ─────────────────────────────────────
+  // ── tool call: eliminar / substituir refeições ────────────────────────
+  // a ia pode pedir VÁRIAS tools numa só resposta (ex: troca + elimina)
+  // executamos por ordem e juntamos as mensagens de confirmação
   if (result.type === 'tool_call') {
-    let confirmText = '';
+    const confirms = [];
 
     for (const tc of result.tool_calls) {
       // executa a função pedida pela ia
@@ -40,18 +42,19 @@ async function handleChatMessage(message, userId, emit) {
       // notifica o frontend para atualizar o dom (remover item do diário)
       emit({ event: 'tool_action', data: toolResult });
 
-      // monta a mensagem de confirmação a mostrar no chat
+      // monta a mensagem de confirmação para esta tool
       if (!toolResult.success) {
-        confirmText = toolResult.error;
+        confirms.push(toolResult.error);
       } else if (toolResult.action === 'delete_all') {
-        confirmText = 'Eliminei todas as refeições do teu diário de hoje.';
+        confirms.push('Eliminei todas as refeições do teu diário de hoje.');
       } else if (toolResult.action === 'delete_one') {
-        confirmText = `Eliminei "${toolResult.deleted.alimento}" do teu diário.`;
+        confirms.push(`Eliminei "${toolResult.deleted.alimento}" do teu diário.`);
       } else if (toolResult.action === 'replace_one') {
-        confirmText = `Troquei "${toolResult.old_alimento}" por "${toolResult.new_entry.alimento}" no teu diário.`;
+        confirms.push(`Troquei "${toolResult.old_alimento}" por "${toolResult.new_entry.alimento}" no teu diário.`);
       }
     }
 
+    const confirmText = confirms.join(' ');
     emit({ event: 'message', data: confirmText });
     if (userId) await saveChatMessage(userId, message, confirmText);
     return;

@@ -33,7 +33,12 @@ Tens acesso a funções para gerir o diário alimentar do utilizador:
 - delete_all_food_entries() → elimina todas as refeições de hoje
 - replace_food_entry(nome, novo_texto) → substitui uma refeição já registada por outra. Usa quando o utilizador diz "troca X por Y", "substitui X por Y", "muda os X para Y".
 
-Quando o utilizador pede para eliminar OU substituir uma refeição, usa SEMPRE a função correta. Não respondas apenas em texto.`;
+Quando o utilizador pede para eliminar OU substituir uma refeição, usa SEMPRE a função correta. Não respondas apenas em texto.
+
+PEDIDOS COMBINADOS:
+- Se o utilizador pedir duas ações na mesma frase (ex: "troca X por Y e elimina"), chama as DUAS funções na mesma resposta, pela ordem em que ele as pediu.
+- Ex: "troca 200g de frango por 70g de bolachas e elimina" → primeiro chama replace_food_entry(nome="200g de frango", novo_texto="70g de bolachas"), depois delete_food_entry(nome="70g de bolachas").
+- Ex: "elimina os ovos e os morangos" → chama delete_food_entry duas vezes, uma para cada.`;
 
   // se ainda não há perfil, pede os dados ao user
   if (!user) {

@@ -78,17 +78,17 @@ const TOOLS = [
     function: {
       name: 'replace_food_entry',
       // substitui uma refeição já registada por outra — só com palavras explícitas de troca
-      description: 'Substitui uma refeição já registada no diário por outra nova. Usa APENAS quando o utilizador usa palavras explícitas de troca como "troca", "substitui", "muda" seguidas de "X por Y" (ex: "troca os ovos por morangos e bife"). NUNCA usar quando o utilizador descreve simplesmente uma nova refeição com "comi", "almocei", "jantei" — nesses casos é só análise, não troca.',
+      description: 'Substitui uma refeição JÁ REGISTADA no diário por outra nova. Usa APENAS quando o utilizador usa palavras explícitas de troca como "troca", "substitui", "muda" seguidas de "X por Y" (ex: "troca os ovos por morangos e bife", "substitui 200g de frango por 70g de bolachas"). REGRA CRÍTICA: o argumento "nome" é SEMPRE a refeição ANTIGA (a que já está no diário, vem ANTES do "por"). O argumento "novo_texto" é SEMPRE a refeição NOVA (vem DEPOIS do "por"). NUNCA troques estes argumentos. NUNCA usar esta tool quando o utilizador descreve uma nova refeição com "comi", "almocei", "jantei".',
       parameters: {
         type: 'object',
         properties: {
           nome: {
             type: 'string',
-            description: 'Nome exato ou parcial da refeição a substituir, tal como aparece no diário (ex: "ovos e pão")'
+            description: 'A refeição ANTIGA — aquela que já está no diário e o utilizador quer substituir. É o que vem ANTES da palavra "por" na frase do utilizador. Ex: na frase "troca 200g de frango por 70g de bolachas", o nome é "200g de frango".'
           },
           novo_texto: {
             type: 'string',
-            description: 'Descrição em linguagem natural do novo conteúdo da refeição (ex: "morangos e bife de frango")'
+            description: 'A refeição NOVA que vai substituir a antiga. É o que vem DEPOIS da palavra "por". Ex: na frase "troca 200g de frango por 70g de bolachas", o novo_texto é "70g de bolachas".'
           }
         },
         required: ['nome', 'novo_texto']
