@@ -30,7 +30,6 @@ REGRA CRÍTICA SOBRE FUNÇÕES:
 Tens acesso a funções para gerir o diário alimentar do utilizador:
 - delete_food_entry(nome) → elimina uma refeição pelo nome
 - delete_last_food_entry() → elimina a última refeição
-- delete_all_food_entries() → elimina todas as refeições de hoje
 - replace_food_entry(nome, novo_texto) → substitui uma refeição já registada por outra. Usa quando o utilizador diz "troca X por Y", "substitui X por Y", "muda os X para Y".
 
 Quando o utilizador pede para eliminar OU substituir uma refeição, usa SEMPRE a função correta. Não respondas apenas em texto.
