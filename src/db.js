@@ -1,137 +1,110 @@
-import sqlite3 from 'sqlite3';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
+import mysql from 'mysql2/promise';
+import 'dotenv/config';
 
-// caminho absoluto da pasta deste ficheiro (substitui o __dirname dos esm)
-const __dirname = dirname(fileURLToPath(import.meta.url));
-// localização do ficheiro sqlite no disco
-const databasePath = join(__dirname, 'nutribot.db');
-// ativa modo verbose para mensagens de erro mais detalhadas
-const sqlite = sqlite3.verbose();
-// abre (ou cria) a base de dados
-const db = new sqlite.Database(databasePath, (err) => {
-  if (err) {
-    console.error('erro ao abrir a base de dados:', err);
-  }
+// pool de ligações ao mysql (reutiliza ligações em vez de abrir uma nova por pedido)
+const pool = mysql.createPool({
+  host:     process.env.DB_HOST     || 'localhost',
+  user:     process.env.DB_USER     || 'root',
+  password: process.env.DB_PASSWORD || '',
+  database: process.env.DB_NAME     || 'nutribot',
+  waitForConnections: true,
+  connectionLimit: 10,
 });
 
-// garante a criação das tabelas em série (uma a seguir à outra)
-db.serialize(() => {
-  // wal melhora concorrência entre leituras e escritas
-  db.run('PRAGMA journal_mode = WAL');
-  // tabela de utilizadores (perfil para personalizar o bot)
-  db.run(
-    `CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      nome TEXT NOT NULL,
-      idade INTEGER NOT NULL,
-      peso REAL NOT NULL,
-      altura REAL NOT NULL,
-      objetivo TEXT NOT NULL,
-      created_at TEXT NOT NULL
-    )`
-  );
-  // tabela do diário alimentar (refeições registadas)
-  db.run(
-    `CREATE TABLE IF NOT EXISTS food_diary (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      alimento TEXT NOT NULL,
-      kcal INTEGER NOT NULL,
-      proteina TEXT NOT NULL,
-      carboidratos TEXT NOT NULL,
-      gordura TEXT NOT NULL,
-      created_at TEXT NOT NULL
-    )`
-  );
-  // histórico de conversa (para dar contexto à ia)
-  db.run(
-    `CREATE TABLE IF NOT EXISTS chat_history (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
+// cria as tabelas se ainda não existirem (corre uma vez no arranque)
+async function initDB() {
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS users (
+      id         INT AUTO_INCREMENT PRIMARY KEY,
+      nome       VARCHAR(255) NOT NULL,
+      idade      INT          NOT NULL,
+      peso       FLOAT        NOT NULL,
+      altura     FLOAT        NOT NULL,
+      objetivo   VARCHAR(255) NOT NULL,
+      created_at VARCHAR(50)  NOT NULL
+    )
+  `);
+
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS food_diary (
+      id            INT AUTO_INCREMENT PRIMARY KEY,
+      user_id       INT         NOT NULL,
+      alimento      TEXT        NOT NULL,
+      kcal          INT         NOT NULL,
+      proteina      VARCHAR(50) NOT NULL,
+      carboidratos  VARCHAR(50) NOT NULL,
+      gordura       VARCHAR(50) NOT NULL,
+      created_at    VARCHAR(50) NOT NULL
+    )
+  `);
+
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS chat_history (
+      id           INT AUTO_INCREMENT PRIMARY KEY,
+      user_id      INT  NOT NULL,
       user_message TEXT NOT NULL,
-      ai_response TEXT NOT NULL,
-      created_at TEXT NOT NULL
-    )`
-  );
-});
-
-// wrapper de db.run em promessa (insert/update/delete)
-function run(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.run(sql, params, function (err) {
-      if (err) reject(err);
-      // lastid = id do registo inserido, changes = nº de linhas afetadas
-      else resolve({ lastID: this.lastID, changes: this.changes });
-    });
-  });
+      ai_response  TEXT NOT NULL,
+      created_at   VARCHAR(50) NOT NULL
+    )
+  `);
 }
 
-// wrapper de db.all em promessa (devolve várias linhas)
-function all(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
-      if (err) reject(err);
-      else resolve(rows);
-    });
-  });
-}
-
-// wrapper de db.get em promessa (devolve uma linha ou undefined)
-function get(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => {
-      if (err) reject(err);
-      else resolve(row);
-    });
-  });
-}
+initDB().catch(err => console.error('Erro ao inicializar BD:', err));
 
 // insere um novo utilizador e devolve o id gerado
 async function saveUser(nome, idade, peso, altura, objetivo) {
   const createdAt = new Date().toISOString();
-  return run(
+  const [result] = await pool.execute(
     `INSERT INTO users (nome, idade, peso, altura, objetivo, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
     [nome, idade, peso, altura, objetivo, createdAt]
   );
+  return { lastID: result.insertId, changes: result.affectedRows };
 }
 
 // vai buscar o utilizador pelo id
 async function getUser(id) {
-  return get(`SELECT * FROM users WHERE id = ?`, [id]);
+  const [rows] = await pool.execute(`SELECT * FROM users WHERE id = ?`, [id]);
+  return rows[0];
 }
 
 // regista uma refeição no diário do utilizador
 async function saveFoodEntry(userId, alimento, kcal, proteina, carboidratos, gordura) {
   const createdAt = new Date().toISOString();
-  return run(
+  const [result] = await pool.execute(
     `INSERT INTO food_diary (user_id, alimento, kcal, proteina, carboidratos, gordura, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [userId, alimento, kcal, proteina, carboidratos, gordura, createdAt]
   );
+  return { lastID: result.insertId, changes: result.affectedRows };
 }
 
 // devolve todas as refeições do user, das mais recentes para as mais antigas
 async function getAllFoodEntries(userId) {
-  return all(`SELECT * FROM food_diary WHERE user_id = ? ORDER BY id DESC`, [userId]);
+  const [rows] = await pool.execute(
+    `SELECT * FROM food_diary WHERE user_id = ? ORDER BY id DESC`,
+    [userId]
+  );
+  return rows;
 }
 
 // apaga uma refeição pelo id
 async function deleteFoodEntry(id) {
-  return run(`DELETE FROM food_diary WHERE id = ?`, [id]);
+  const [result] = await pool.execute(`DELETE FROM food_diary WHERE id = ?`, [id]);
+  return { lastID: null, changes: result.affectedRows };
 }
 
 // guarda um par (mensagem do user + resposta da ia) no histórico
 async function saveChatMessage(userId, userMessage, aiResponse) {
   const createdAt = new Date().toISOString();
-  return run(
+  const [result] = await pool.execute(
     `INSERT INTO chat_history (user_id, user_message, ai_response, created_at) VALUES (?, ?, ?, ?)`,
     [userId, userMessage, aiResponse, createdAt]
   );
+  return { lastID: result.insertId, changes: result.affectedRows };
 }
 
 // vai buscar as últimas n mensagens (e inverte para ficar por ordem cronológica)
 async function getRecentChatHistory(userId, limit = 5) {
-  const rows = await all(
+  const [rows] = await pool.execute(
     `SELECT user_message, ai_response FROM chat_history WHERE user_id = ? ORDER BY id DESC LIMIT ?`,
     [userId, limit]
   );
@@ -140,12 +113,17 @@ async function getRecentChatHistory(userId, limit = 5) {
 
 // apaga todas as refeições de um utilizador (usado pela tool delete_all)
 async function deleteAllFoodEntries(userId) {
-  return run(`DELETE FROM food_diary WHERE user_id = ?`, [userId]);
+  const [result] = await pool.execute(`DELETE FROM food_diary WHERE user_id = ?`, [userId]);
+  return { lastID: null, changes: result.affectedRows };
 }
 
 // devolve a refeição mais recente (usado pela tool delete_last)
 async function getLastFoodEntry(userId) {
-  return get(`SELECT * FROM food_diary WHERE user_id = ? ORDER BY id DESC LIMIT 1`, [userId]);
+  const [rows] = await pool.execute(
+    `SELECT * FROM food_diary WHERE user_id = ? ORDER BY id DESC LIMIT 1`,
+    [userId]
+  );
+  return rows[0];
 }
 
-export { db, saveUser, getUser, saveFoodEntry, getAllFoodEntries, deleteFoodEntry, saveChatMessage, getRecentChatHistory, deleteAllFoodEntries, getLastFoodEntry };
+export { saveUser, getUser, saveFoodEntry, getAllFoodEntries, deleteFoodEntry, saveChatMessage, getRecentChatHistory, deleteAllFoodEntries, getLastFoodEntry };
