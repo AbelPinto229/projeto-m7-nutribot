@@ -1,28 +1,42 @@
 import Groq from 'groq-sdk';
+// sdk oficial do groq para node.js — abstrai os pedidos http à api
+
 import 'dotenv/config';
+// carrega as variáveis do .env (groq_api_key)
+
 import { createSystemPrompt } from './systemPrompt.js';
+// usado no generateJson para definir o contexto da ia
 
-let client = null;
+let client = null; // instância única do cliente groq — criada apenas uma vez (padrão singleton)
 
+// devolve o cliente groq, criando-o na primeira vez que é chamado
 function getClient() {
-  if (client) return client;
+  if (client) return client; // reutiliza a instância existente
+
   if (!process.env.GROQ_API_KEY) {
+    // a variável de ambiente não está definida no .env
     const err = new Error('GROQ_API_KEY em falta no .env');
-    err.code = 'NO_API_KEY';
+    err.code = 'NO_API_KEY'; // código personalizado reconhecido pelo errors.js
     throw err;
   }
-  client = new Groq({ apiKey: process.env.GROQ_API_KEY });
+
+  client = new Groq({ apiKey: process.env.GROQ_API_KEY }); // cria o cliente com a chave
   return client;
 }
 
 const MODEL = 'llama-3.3-70b-versatile';
-const AI_TIMEOUT_MS = 20000;
+// modelo llama 3.3 70b — bom equilíbrio entre qualidade e velocidade
 
+const AI_TIMEOUT_MS = 20000;
+// 20 segundos — se a ia não responder a tempo, o pedido falha com timeout
+
+// lista de tools disponíveis — a ia lê as descrições e decide quando e como chamar cada uma
 const TOOLS = [
   {
-    type: 'function',
+    type: 'function', // formato openai-compatível — suportado pelo groq
     function: {
       name: 'delete_food_entry',
+      // nome da tool — deve corresponder ao case em foodTools.js
       description: 'Elimina uma refeição do diário pelo nome. Usa APENAS quando o utilizador usa explicitamente palavras como "elimina", "apaga", "remove" ou "cancela" seguidas do nome de um alimento. NUNCA chamar quando o utilizador descreve o que comeu com palavras como "comi", "almocei", "jantei", "bebi", "comer".',
       parameters: {
         type: 'object',
@@ -32,7 +46,7 @@ const TOOLS = [
             description: 'Nome exato ou parcial da refeição a eliminar, tal como aparece no diário'
           }
         },
-        required: ['nome']
+        required: ['nome'] // a ia é obrigada a fornecer este campo
       }
     }
   },
@@ -44,7 +58,7 @@ const TOOLS = [
       parameters: {
         type: 'object',
         properties: {},
-        required: []
+        required: [] // sem parâmetros — o userId vem pelo contexto da função executeTool
       }
     }
   },
@@ -77,63 +91,72 @@ const TOOLS = [
             description: 'A refeição NOVA que vai substituir a antiga. É o que vem DEPOIS da palavra "por". Ex: na frase "troca 200g de frango por 70g de bolachas", o novo_texto é "70g de bolachas".'
           }
         },
-        required: ['nome', 'novo_texto']
+        required: ['nome', 'novo_texto'] // ambos obrigatórios — nome do que sai e texto do que entra
       }
     }
   }
 ];
 
-// chama a ia e devolve texto ou tool calls (sem streaming)
-// withTools = false no follow-up após tool calls (evita recursão)
+// envia mensagens à ia e devolve texto ou tool calls (sem streaming)
 async function chat(messages, withTools = true) {
+  // messages = array de { role, content } — histórico completo da conversa
+  // withTools = false no follow-up após tool calls (evita recursão infinita)
+
   const options = {
-    model: MODEL,
-    messages,
-    stream: false,
-    max_tokens: 600,
-    temperature: 0.1,
+    model: MODEL,       // llama-3.3-70b-versatile
+    messages,           // histórico completo
+    stream: false,      // http normal — aguarda a resposta completa antes de devolver
+    max_tokens: 600,    // limite de tokens na resposta (evita respostas demasiado longas)
+    temperature: 0.1,   // próximo de 0 = mais determinístico, menos criativo
   };
 
   if (withTools) {
-    options.tools = TOOLS;
-    options.tool_choice = 'auto';
+    options.tools = TOOLS;          // passa a lista de tools disponíveis
+    options.tool_choice = 'auto';   // a ia decide sozinha se usa tools ou responde em texto
   }
 
   const response = await getClient().chat.completions.create(options, { timeout: AI_TIMEOUT_MS });
+  // faz o pedido à api do groq — lança erro se timeout ou se a chave for inválida
+
   const choice = response.choices[0];
+  // choices = array de respostas possíveis — normalmente só há uma (choices[0])
 
   if (withTools && choice.finish_reason === 'tool_calls' && choice.message.tool_calls?.length > 0) {
+    // finish_reason === 'tool_calls' significa que a ia quer chamar uma ou mais tools
     return {
       type: 'tool_calls',
-      message: choice.message,
+      message: choice.message, // a mensagem completa da ia (necessária para o follow-up — protocolo openai)
       tool_calls: choice.message.tool_calls.map(tc => ({
-        id: tc.id,
-        name: tc.function.name,
-        args: JSON.parse(tc.function.arguments || '{}'),
+        id: tc.id,                                         // id único desta tool call
+        name: tc.function.name,                            // nome da função a chamar
+        args: JSON.parse(tc.function.arguments || '{}'),   // argumentos em objeto javascript
       })),
     };
   }
 
   return { type: 'text', text: choice.message.content || '' };
+  // resposta em texto — o chatService extrai o mood e devolve ao browser
 }
 
-// json mode: força output json válido (usado pelo nutriParser)
+// modo json: força a ia a devolver sempre json válido (usado pelo nutriParser)
 async function generateJson(prompt) {
   const messages = [
-    { role: 'system', content: createSystemPrompt() },
-    { role: 'user', content: prompt },
+    { role: 'system', content: createSystemPrompt() }, // system prompt sem perfil (user=null)
+    { role: 'user', content: prompt },                  // o prompt com o schema e o texto da refeição
   ];
 
   const response = await getClient().chat.completions.create({
     model: MODEL,
     messages,
     stream: false,
-    max_tokens: 400,
-    temperature: 0,
+    max_tokens: 400,   // respostas json são curtas — 400 tokens chega
+    temperature: 0,    // 0 = totalmente determinístico (sem criatividade no json)
     response_format: { type: 'json_object' },
+    // modo json do groq — garante que o output é sempre json válido, sem texto livre
   }, { timeout: AI_TIMEOUT_MS });
 
   return { text: response.choices[0].message.content };
+  // devolve o json como string — o nutriParser faz json.parse()
 }
 
 export { chat, generateJson };

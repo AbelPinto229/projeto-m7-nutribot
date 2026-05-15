@@ -1,11 +1,9 @@
 import { generateJson } from './groqClient.js';
+// usa o modo json da ia para garantir output sempre válido (sem markdown, sem texto livre)
 
-// recebe um texto em linguagem natural e devolve as macros estruturadas
-// se o texto não descrever um alimento real e seguro para consumo humano,
-// a ia devolve { "valido": false, "motivo": "..." } e nós atiramos um erro tipado
+// recebe texto em linguagem natural e devolve as macros estruturadas
 async function parseNutritionFromText(text) {
-  // prompt com o schema explícito para a ia respeitar
-  // inclui regra para rejeitar alimentos inválidos / não comestíveis
+  // prompt com o schema explícito e as regras de validação
   const prompt = `Analisa esta refeição/bebida e devolve APENAS um objeto JSON válido.
 
 REGRAS:
@@ -30,25 +28,24 @@ Se NÃO for comida nem bebida, devolve:
 }
 
 Refeição/bebida: ${text}`;
+  // injeta o texto da refeição no fim do prompt
 
-  // chama a ia em modo json (response_format garante json válido)
-  const response = await generateJson(prompt);
-  const raw = response.text?.trim();
-  if (!raw) throw new Error('Resposta inválida.');
-  // por precaução, tira cercas markdown caso a ia as ponha
-  const clean = raw.replace(/```json|```/g, '').trim();
-  const parsed = JSON.parse(clean);
+  const response = await generateJson(prompt); // chama a ia em modo json — resposta sempre em json válido
+  const raw = response.text?.trim();           // o texto da resposta — trim remove espaços em branco
+  if (!raw) throw new Error('Resposta inválida.'); // não devia acontecer com response_format: json_object
 
-  // se a ia rejeitou o alimento, atira erro tipado para o api.js tratar
+  const clean = raw.replace(/```json|```/g, '').trim(); // remove cercas de código markdown por precaução
+  const parsed = JSON.parse(clean);                      // converte a string json num objeto javascript
+
   if (parsed.valido === false) {
+    // a ia rejeitou o texto — não é comida nem bebida
     const err = new Error(parsed.motivo || 'Esse alimento não é válido.');
-    err.code = 'INVALID_FOOD';
+    err.code = 'INVALID_FOOD'; // código personalizado reconhecido pelo api.js (devolve 400)
     throw err;
   }
 
-  // remove o campo "valido" (interno) antes de devolver
-  delete parsed.valido;
-  return parsed;
+  delete parsed.valido; // remove o campo interno "valido" — o caller só precisa das macros
+  return parsed;        // devolve { alimento, kcal, proteina, carboidratos, gordura }
 }
 
 export { parseNutritionFromText };

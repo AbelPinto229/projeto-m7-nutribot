@@ -1,3 +1,6 @@
+
+
+
 # NutriBot — Diário Alimentar com IA
 
 Assistente de nutrição inteligente que analisa refeições descritas em linguagem natural, calcula macronutrientes e mantém um diário alimentar persistente com base de dados MySQL.

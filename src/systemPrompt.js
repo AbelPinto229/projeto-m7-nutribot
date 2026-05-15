@@ -1,6 +1,9 @@
-// monta o prompt com base no perfil do utilizador (faz os cálculos de TMB/TDEE/macros)
+// monta o prompt de sistema com as regras da ia e, se houver perfil, as metas nutricionais calculadas
 function createSystemPrompt(user = null) {
-  // regras base — aplicam-se sempre
+  // user = objeto com o perfil do utilizador (nome, peso, altura, objetivo, etc.)
+  // user = null quando ainda não há utilizador registado
+
+  // regras base — aplicam-se sempre, independentemente de haver perfil ou não
   const base = `Tu és um assistente de logs de nutrição chamado NutriBot. O teu trabalho é analisar as refeições que o utilizador descreve e dar feedback honesto sobre o quão bem elas se alinham com as metas nutricionais dele, que tu calculas com base no perfil dele. Outras funções não teu foco é só analisar e sugerir melhorias, não julgar ou motivar.
 Responde sempre em português de Portugal. Nunca sejas condescendente — diz a verdade.
 
@@ -46,56 +49,67 @@ PEDIDOS COMBINADOS:
 - Ex: "troca 200g de frango por 70g de bolachas e elimina" → primeiro chama replace_food_entry(nome="200g de frango", novo_texto="70g de bolachas"), depois delete_food_entry(nome="70g de bolachas").
 - Ex: "elimina os ovos e os morangos" → chama delete_food_entry duas vezes, uma para cada.`;
 
-  // se ainda não há perfil, pede os dados ao user
   if (!user) {
+    // sem perfil: pede os dados ao utilizador de forma simpática (não usa a piada de recusa)
     return base + `\nAinda não tens dados do utilizador — isto NÃO é um pedido fora de âmbito, por isso NÃO uses a piada de recusa. Apenas pede-lhe de forma simpática: nome, idade, sexo, peso (kg),
 altura (cm), nível de atividade (sedentário/leve/moderado/intenso/atleta) e objetivo
 (perder peso / manutenção / ganhar massa muscular) e número de refeições por dia.`;
   }
 
   const { nome, idade, sexo, peso, altura, atividade, objetivo, refeicoesPorDia = 5 } = user;
+  // extrai os campos do perfil — refeicoesPorDia tem default 5 se não estiver definido
 
-  // taxa metabólica basal (mifflin-st jeor) — calorias gastas em repouso
+  // ── taxa metabólica basal (fórmula de mifflin-st jeor) ───────────────────────
+  // tmb = calorias gastas por dia em repouso absoluto (sem qualquer atividade)
   const tmb = sexo === 'masculino'
-    ? 10 * peso + 6.25 * altura - 5 * idade + 5
-    : 10 * peso + 6.25 * altura - 5 * idade - 161;
+    ? 10 * peso + 6.25 * altura - 5 * idade + 5    // fórmula para homens
+    : 10 * peso + 6.25 * altura - 5 * idade - 161; // fórmula para mulheres (−166 kcal)
 
-  // multiplicadores por nível de atividade
+  // ── multiplicadores de atividade física ──────────────────────────────────────
   const fatores = {
-    sedentario: 1.2,
-    leve: 1.375,
-    moderado: 1.55,
-    intenso: 1.725,
-    atleta: 1.9,
+    sedentario: 1.2,   // trabalho de secretária, sem exercício
+    leve: 1.375,       // exercício 1–3 dias por semana
+    moderado: 1.55,    // exercício 3–5 dias por semana
+    intenso: 1.725,    // exercício 6–7 dias por semana
+    atleta: 1.9,       // treino duas vezes por dia
   };
-  // tdee = gasto energético total diário
+
   const tdee = Math.round(tmb * (fatores[atividade] ?? 1.55));
+  // tdee = total daily energy expenditure — gasto calórico total diário
+  // tmb × fator de atividade — ?? 1.55 = usa moderado se a atividade não for reconhecida
 
-  // ajusta calorias ao objetivo: défice (perder), superávite (ganhar) ou manter
-  const metaCaloricaDiaria = objetivo === 'perder_peso'  ? tdee - 500
-                           : objetivo === 'ganhar_massa' ? tdee + 300
-                           : tdee;
+  // ── meta calórica ajustada ao objetivo ───────────────────────────────────────
+  const metaCaloricaDiaria = objetivo === 'perder_peso'  ? tdee - 500  // défice de 500 kcal/dia (≈ −0,5 kg/semana)
+                           : objetivo === 'ganhar_massa' ? tdee + 300  // superávite de 300 kcal/dia (lean bulk)
+                           : tdee;                                      // manutenção = come o que gasta
 
-  // proteína em g por kg de peso, mais alta se objetivo for muscular
+  // ── distribuição de macronutrientes ──────────────────────────────────────────
   const grProt_kg = objetivo === 'perder_peso' ? 1.8 : objetivo === 'ganhar_massa' ? 2.0 : 1.6;
+  // gramas de proteína por kg de peso — mais alta para quem quer perder ou ganhar massa
+
   const protDiaria = Math.round(peso * grProt_kg);
-  // 25% das kcal vêm de gordura (9 kcal por g)
+  // ex: 70 kg × 1.8 = 126 g de proteína por dia
+
   const gordDiaria = Math.round((metaCaloricaDiaria * 0.25) / 9);
-  const calProt = protDiaria * 4; // proteína = 4 kcal/g
-  const calGord = gordDiaria * 9; // gordura = 9 kcal/g
-  // o resto das calorias vai para os hidratos (4 kcal/g)
+  // 25% das calorias diárias vêm de gordura — dividido por 9 kcal/g para obter gramas
+
+  const calProt = protDiaria * 4; // proteína = 4 kcal por grama
+  const calGord = gordDiaria * 9; // gordura = 9 kcal por grama
+
   const hidratosDiarios = Math.round((metaCaloricaDiaria - calProt - calGord) / 4);
+  // hidratos = calorias que sobram depois de alocar proteína e gordura — dividido por 4 kcal/g
 
-  // divide as metas diárias pelo nº de refeições
-  const n = refeicoesPorDia;
+  // ── meta por refeição ─────────────────────────────────────────────────────────
+  const n = refeicoesPorDia; // número de refeições por dia
   const metaPorRefeicao = {
-    kcal:     Math.round(metaCaloricaDiaria / n),
-    prot:     Math.round(protDiaria / n),
-    hidratos: Math.round(hidratosDiarios / n),
-    gord:     Math.round(gordDiaria / n),
+    kcal:     Math.round(metaCaloricaDiaria / n), // calorias alvo por refeição
+    prot:     Math.round(protDiaria / n),          // proteína alvo por refeição
+    hidratos: Math.round(hidratosDiarios / n),     // hidratos alvo por refeição
+    gord:     Math.round(gordDiaria / n),           // gordura alvo por refeição
   };
+  // a ia usa estes valores para comparar cada refeição descrita pelo utilizador
 
-  // injeta tudo no prompt para a ia saber as metas exatas
+  // injeta o perfil e as metas no prompt — a ia recebe tudo para personalizar as respostas
   return `${base}
 
 ━━ PERFIL DO UTILIZADOR ━━
