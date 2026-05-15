@@ -105,8 +105,8 @@ async function saveChatMessage(userId, userMessage, aiResponse) {
 // vai buscar as últimas n mensagens (e inverte para ficar por ordem cronológica)
 async function getRecentChatHistory(userId, limit = 5) {
   const [rows] = await pool.execute(
-    `SELECT user_message, ai_response FROM chat_history WHERE user_id = ? ORDER BY id DESC LIMIT ?`,
-    [userId, limit]
+    `SELECT user_message, ai_response FROM chat_history WHERE user_id = ? ORDER BY id DESC LIMIT ${parseInt(limit)}`,
+    [userId]
   );
   return rows.reverse();
 }
