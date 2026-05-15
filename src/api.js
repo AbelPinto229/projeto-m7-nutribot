@@ -62,9 +62,7 @@ app.get('/chat/history', async (req, res) => {
   }
 });
 
-// ── chat principal ─────────────────────────────────────────────────────────────
-// usa server-sent events (sse) para fazer streaming da resposta para o frontend.
-// a lógica vive em chatService.js — aqui só traduzimos os eventos dele para sse.
+// chat principal — recebe a mensagem e devolve a resposta em JSON
 app.get('/chat', async (req, res) => {
   const message = String(req.query.message || '').trim();
   const userId = req.query.user_id ? parseInt(req.query.user_id) : null;
@@ -72,39 +70,12 @@ app.get('/chat', async (req, res) => {
     return res.status(400).json({ error: 'Campo "message" é obrigatório.' });
   }
 
-  // headers obrigatórios para abrir um stream sse
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-
-  // traduz os eventos do chatService em linhas sse
-  // 'message' vai como data normal; os outros (mood, tool_action) como evento nomeado
-  const emit = ({ event, data }) => {
-    if (event === 'message') {
-      res.write(`data: ${JSON.stringify(data)}\n\n`);
-    } else {
-      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-    }
-  };
-
   try {
-    await handleChatMessage(message, userId, emit);
-    res.write('event: done\ndata: [DONE]\n\n');
+    const result = await handleChatMessage(message, userId);
+    res.json(result);
   } catch (error) {
-    // log técnico no servidor (stack + mensagem)
     console.error('Erro no chat:', error);
-    // mensagem amigável para o user (em vez de stack trace)
-    const userMsg = mensagemErroIA(error);
-    // envia como data normal para aparecer na bolha do chat
-    res.write(`data: ${JSON.stringify(userMsg)}\n\n`);
-    // também envia evento 'error' para o frontend poder estilizar diferente se quiser
-    res.write(`event: error\ndata: ${JSON.stringify(userMsg)}\n\n`);
-    // sinaliza fim para o frontend não ficar à espera de mais chunks
-    res.write('event: done\ndata: [DONE]\n\n');
-  } finally {
-    // fecha sempre o stream no fim
-    res.end();
+    res.status(500).json({ error: mensagemErroIA(error) });
   }
 });
 

@@ -1,13 +1,20 @@
 import { getUser, getRecentChatHistory, saveChatMessage } from './db.js';
-import { chat, chatStream } from './groqClient.js';
+import { chat } from './groqClient.js';
 import { executeTool } from './foodTools.js';
 import { createSystemPrompt } from './systemPrompt.js';
 
-async function handleChatMessage(message, userId, emit) {
+function limparMarkdown(texto) {
+  return texto
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/#{1,6}\s/g, '')
+    .trim();
+}
+
+async function handleChatMessage(message, userId) {
   const user = userId ? await getUser(userId) : null;
   const history = userId ? await getRecentChatHistory(userId, 5) : [];
 
-  // monta a conversa: system prompt + histórico + mensagem nova
   const messages = [
     { role: 'system', content: createSystemPrompt(user) },
     ...history.flatMap(row => [
@@ -17,76 +24,41 @@ async function handleChatMessage(message, userId, emit) {
     { role: 'user', content: message },
   ];
 
-  // passo 1: stream da ia — texto ou tool calls
-  let toolCallsResult = null;
-  let fullText = '';
-  let buffer = '';
-  let moodHandled = false;
+  // chama a ia — pode responder com texto ou pedir tool calls
+  const result = await chat(messages);
 
-  for await (const chunk of chat(messages)) {
-    if (chunk.type === 'tool_calls') {
-      toolCallsResult = chunk;
-      break;
+  if (result.type === 'tool_calls') {
+    // executa as tools pedidas pela ia
+    const toolMessages = [];
+    const toolActions = [];
+
+    for (const tc of result.tool_calls) {
+      const toolResult = await executeTool(tc.name, tc.args, userId);
+      toolActions.push(toolResult);
+      toolMessages.push({
+        role: 'tool',
+        tool_call_id: tc.id,
+        content: JSON.stringify(toolResult),
+      });
     }
 
-    // pedaço de texto — buffer até ao primeiro \n para extrair o MOOD
-    fullText += chunk.content;
-    if (!moodHandled) {
-      buffer += chunk.content;
-      const nl = buffer.indexOf('\n');
-      if (nl !== -1) {
-        const firstLine = buffer.slice(0, nl).trim();
-        const moodMatch = firstLine.match(/^MOOD:(happy|ok|stressed|angry)$/);
-        if (moodMatch) {
-          emit({ event: 'mood', data: moodMatch[1] });
-          const rest = buffer.slice(nl + 1).trimStart();
-          if (rest) emit({ event: 'message', data: rest });
-        } else {
-          if (buffer) emit({ event: 'message', data: buffer });
-        }
-        moodHandled = true;
-        buffer = '';
-      }
-    } else {
-      emit({ event: 'message', data: chunk.content });
-    }
+    // envia os resultados de volta à ia para gerar a confirmação
+    const followUp = [...messages, result.message, ...toolMessages];
+    const confirmation = await chat(followUp, false);
+    const text = limparMarkdown(confirmation.text || '');
+
+    if (userId) await saveChatMessage(userId, message, text);
+    return { text, tool_actions: toolActions };
   }
 
-  // flush do buffer se o stream terminou sem encontrar \n
-  if (!moodHandled && buffer) {
-    emit({ event: 'message', data: buffer });
-  }
+  // resposta em texto — extrai o mood da primeira linha
+  const lines = result.text.split('\n');
+  const moodMatch = lines[0].trim().match(/^MOOD:(happy|ok|stressed|angry)$/);
+  const mood = moodMatch ? moodMatch[1] : null;
+  const text = limparMarkdown(mood ? lines.slice(1).join('\n').trimStart() : result.text);
 
-  // resposta em texto: grava e termina
-  if (!toolCallsResult) {
-    if (userId) await saveChatMessage(userId, message, fullText);
-    return;
-  }
-
-  // passo 2: executa as tools que a ia pediu
-  const toolMessages = [];
-  for (const tc of toolCallsResult.tool_calls) {
-    const toolResult = await executeTool(tc.name, tc.args, userId);
-    emit({ event: 'tool_action', data: toolResult });
-
-    // passo 3: empacota o resultado para enviar de volta à ia
-    toolMessages.push({
-      role: 'tool',
-      tool_call_id: tc.id,
-      content: JSON.stringify(toolResult),
-    });
-  }
-
-  // passo 4: envia resultados à ia → ela gera a confirmação em streaming
-  const followUp = [...messages, toolCallsResult.message, ...toolMessages];
-  let confirmText = '';
-
-  for await (const chunk of chatStream(followUp)) {
-    confirmText += chunk;
-    emit({ event: 'message', data: chunk });
-  }
-
-  if (userId) await saveChatMessage(userId, message, confirmText);
+  if (userId) await saveChatMessage(userId, message, result.text);
+  return { text, mood };
 }
 
 export { handleChatMessage };

@@ -29,28 +29,6 @@ function addMessage(role, text) {
   return bubble;
 }
 
-function addBotStreamBubble() {
-  const msg = document.createElement("div");
-  msg.className = "msg bot";
-
-  const avatar = document.createElement("div");
-  avatar.className = "avatar";
-  avatar.textContent = "🥗";
-
-  const bubble = document.createElement("div");
-  bubble.className = "bubble";
-
-  const cursor = document.createElement("span");
-  cursor.className = "cursor";
-  bubble.appendChild(cursor);
-
-  msg.appendChild(avatar);
-  msg.appendChild(bubble);
-  messagesEl.appendChild(msg);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-  return { bubble, cursor };
-}
-
 async function loadChatHistory() {
   if (!currentUser) return;
   try {
@@ -88,115 +66,61 @@ async function sendMessage() {
     }
   }
 
-  const { bubble, cursor } = addBotStreamBubble();
-  let fullResponse = "";
-  let pendingEventType = null;
-
-  const controller = new AbortController();
-  let timeoutId = setTimeout(() => controller.abort(), IA_TIMEOUT_MS);
-  const resetTimeout = () => {
-    clearTimeout(timeoutId);
-    timeoutId = setTimeout(() => controller.abort(), IA_TIMEOUT_MS);
-  };
+  // bolha temporária enquanto aguarda resposta da ia
+  const bubble = addMessage("bot", "⏳ A pensar...");
 
   try {
     const userId = currentUser?.id || "";
-    const res = await fetch(
-      `/chat?message=${encodeURIComponent(text)}&user_id=${userId}`,
-      { signal: controller.signal },
-    );
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
+    const res = await fetch(`/chat?message=${encodeURIComponent(text)}&user_id=${userId}`);
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      resetTimeout();
+    if (!res.ok) {
+      bubble.textContent = "Erro ao contactar o servidor.";
+      bubble.classList.add("bubble-error");
+      sendBtn.disabled = false;
+      return;
+    }
 
-      const raw = decoder.decode(value, { stream: true });
-      const lines = raw.split("\n");
+    const { text: resposta, mood, tool_actions } = await res.json();
 
-      for (const line of lines) {
-        if (line.startsWith("event: ")) {
-          pendingEventType = line.slice(7).trim();
-          continue;
-        }
+    // aplica o mood se vier na resposta (muda o tema visual)
+    if (mood) applyMood(mood);
 
-        if (line.startsWith("data: ")) {
-          const data = line.slice(6).trim();
-          if (!data) continue;
-
-          if (pendingEventType === "mood") {
-            try { applyMood(JSON.parse(data)); } catch (_) {}
-            pendingEventType = null;
-            continue;
+    // atualiza o diário se a ia executou tool calls
+    if (tool_actions?.length) {
+      for (const action of tool_actions) {
+        if (action.action === "delete_all") {
+          document.querySelectorAll(".diary-item").forEach((el) => el.remove());
+          const empty = document.createElement("div");
+          empty.className = "empty-diary";
+          empty.innerHTML = "Ainda sem refeições.<br/>Descreve o que comeste!";
+          document.getElementById("diaryList").appendChild(empty);
+          refreshTotal();
+        } else if (action.action === "delete_one") {
+          let itemEl = document.querySelector(`.diary-item[data-id="${action.id}"]`);
+          if (!itemEl && action.deleted?.alimento) {
+            const name = action.deleted.alimento.toLowerCase();
+            document.querySelectorAll(".diary-item").forEach((el) => {
+              const elName = el.querySelector(".diary-item-name")?.textContent?.toLowerCase();
+              if (elName && (elName.includes(name) || name.includes(elName))) itemEl = el;
+            });
           }
-
-          if (pendingEventType === "error") {
-            try {
-              bubble.textContent = JSON.parse(data);
-              bubble.classList.add("bubble-error");
-            } catch (_) {}
-            pendingEventType = null;
-            continue;
-          }
-
-          if (pendingEventType === "tool_action") {
-            try {
-              const action = JSON.parse(data);
-              if (action.action === "delete_all") {
-                document.querySelectorAll(".diary-item").forEach((el) => el.remove());
-                const empty = document.createElement("div");
-                empty.className = "empty-diary";
-                empty.innerHTML = "Ainda sem refeições.<br/>Descreve o que comeste!";
-                document.getElementById("diaryList").appendChild(empty);
-                refreshTotal();
-              } else if (action.action === "delete_one") {
-                let itemEl = document.querySelector(`.diary-item[data-id="${action.id}"]`);
-                if (!itemEl && action.deleted?.alimento) {
-                  const name = action.deleted.alimento.toLowerCase();
-                  document.querySelectorAll(".diary-item").forEach((el) => {
-                    const elName = el.querySelector(".diary-item-name")?.textContent?.toLowerCase();
-                    if (elName && (elName.includes(name) || name.includes(elName))) itemEl = el;
-                  });
-                }
-                if (itemEl) { itemEl.remove(); refreshTotal(); }
-              } else if (action.action === "replace_one") {
-                const oldEl = document.querySelector(`.diary-item[data-id="${action.old_id}"]`);
-                if (oldEl) oldEl.remove();
-                if (action.new_entry) addDiaryItem(action.new_entry);
-                refreshTotal();
-              }
-            } catch (_) {}
-            pendingEventType = null;
-            continue;
-          }
-
-          if (data === "[DONE]") { pendingEventType = null; break; }
-          pendingEventType = null;
-
-          try {
-            const chunk = JSON.parse(data);
-            fullResponse += chunk;
-            bubble.innerHTML = renderTexto(fullResponse);
-            bubble.appendChild(cursor);
-            messagesEl.scrollTop = messagesEl.scrollHeight;
-          } catch (_) {}
+          if (itemEl) { itemEl.remove(); refreshTotal(); }
+        } else if (action.action === "replace_one") {
+          const oldEl = document.querySelector(`.diary-item[data-id="${action.old_id}"]`);
+          if (oldEl) oldEl.remove();
+          if (action.new_entry) addDiaryItem(action.new_entry);
+          refreshTotal();
         }
       }
     }
 
-    clearTimeout(timeoutId);
-    cursor.remove();
+    // mostra a resposta final na bolha
+    bubble.innerHTML = renderTexto(resposta);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+
   } catch (err) {
-    clearTimeout(timeoutId);
-    if (err.name === "AbortError") {
-      bubble.textContent = "⏱️ A IA demorou demasiado a responder. Tenta novamente.";
-      bubble.classList.add("bubble-error");
-    } else {
-      bubble.textContent = "Erro ao contactar o servidor.";
-    }
-    cursor.remove();
+    bubble.textContent = "Erro ao contactar o servidor.";
+    bubble.classList.add("bubble-error");
   }
 
   sendBtn.disabled = false;

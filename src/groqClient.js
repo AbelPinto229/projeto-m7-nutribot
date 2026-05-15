@@ -83,80 +83,41 @@ const TOOLS = [
   }
 ];
 
-// gerador de streaming com suporte a tools — equivalente ao generateContentStream do professor
-// yields { type: 'text', content } para cada pedaço de texto
-// yields { type: 'tool_calls', message, tool_calls } quando a ia decide chamar funções
-async function* chat(messages) {
-  const stream = await getClient().chat.completions.create({
+// chama a ia e devolve texto ou tool calls (sem streaming)
+// withTools = false no follow-up após tool calls (evita recursão)
+async function chat(messages, withTools = true) {
+  const options = {
     model: MODEL,
     messages,
-    tools: TOOLS,
-    tool_choice: 'auto',
-    stream: true,
+    stream: false,
     max_tokens: 600,
     temperature: 0.1,
-  }, { timeout: AI_TIMEOUT_MS });
+  };
 
-  const pending = {};
+  if (withTools) {
+    options.tools = TOOLS;
+    options.tool_choice = 'auto';
+  }
 
-  for await (const chunk of stream) {
-    const choice = chunk.choices[0];
-    if (!choice) continue;
+  const response = await getClient().chat.completions.create(options, { timeout: AI_TIMEOUT_MS });
+  const choice = response.choices[0];
 
-    const { delta, finish_reason } = choice;
-
-    if (delta?.content) {
-      yield { type: 'text', content: delta.content };
-    }
-
-    if (delta?.tool_calls) {
-      for (const tc of delta.tool_calls) {
-        const i = tc.index;
-        if (!pending[i]) pending[i] = { id: '', name: '', arguments: '' };
-        if (tc.id) pending[i].id += tc.id;
-        if (tc.function?.name) pending[i].name += tc.function.name;
-        if (tc.function?.arguments) pending[i].arguments += tc.function.arguments;
-      }
-    }
-
-    if (finish_reason === 'tool_calls') {
-      const rawCalls = Object.entries(pending).map(([i, tc]) => ({
-        index: Number(i),
+  if (withTools && choice.finish_reason === 'tool_calls' && choice.message.tool_calls?.length > 0) {
+    return {
+      type: 'tool_calls',
+      message: choice.message,
+      tool_calls: choice.message.tool_calls.map(tc => ({
         id: tc.id,
-        type: 'function',
-        function: { name: tc.name, arguments: tc.arguments },
-      }));
-      yield {
-        type: 'tool_calls',
-        message: { role: 'assistant', content: null, tool_calls: rawCalls },
-        tool_calls: rawCalls.map(tc => ({
-          id: tc.id,
-          name: tc.function.name,
-          args: JSON.parse(tc.function.arguments || '{}'),
-        })),
-      };
-    }
+        name: tc.function.name,
+        args: JSON.parse(tc.function.arguments || '{}'),
+      })),
+    };
   }
+
+  return { type: 'text', text: choice.message.content || '' };
 }
 
-// gerador de streaming simples (sem tools) — usado após execução de tool calls
-// yields pedaços de texto diretamente, como o for await do professor
-async function* chatStream(messages) {
-  const stream = await getClient().chat.completions.create({
-    model: MODEL,
-    messages,
-    stream: true,
-    max_tokens: 400,
-    temperature: 0.1,
-  }, { timeout: AI_TIMEOUT_MS });
-
-  for await (const chunk of stream) {
-    const content = chunk.choices[0]?.delta?.content;
-    if (content) yield content;
-  }
-}
-
-// json mode: não streaming, força output json válido (usado pelo nutriParser)
+// json mode: força output json válido (usado pelo nutriParser)
 async function generateJson(prompt) {
   const messages = [
     { role: 'system', content: createSystemPrompt() },
@@ -175,4 +136,4 @@ async function generateJson(prompt) {
   return { text: response.choices[0].message.content };
 }
 
-export { chat, chatStream, generateJson };
+export { chat, generateJson };
