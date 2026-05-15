@@ -1,5 +1,4 @@
-
-
+https://github.com/AbelPinto229/projeto-m7-nutribot.git
 
 # NutriBot — Diário Alimentar com IA
 
