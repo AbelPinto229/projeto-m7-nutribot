@@ -39,6 +39,18 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'delete_all_food_entries',
+      description: 'Elimina TODAS as refeições do diário. Usa APENAS quando o utilizador menciona explicitamente o "diário" e pede para o apagar/limpar todo — ex: "elimina o diário todo", "limpa o meu diário", "apaga todas as refeições do diário". NUNCA usar para pedidos vagos como "elimina tudo", "limpa a base de dados" ou qualquer frase que não mencione explicitamente o diário de refeições.',
+      parameters: {
+        type: 'object',
+        properties: {},
+        required: []
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'delete_last_food_entry',
       description: 'Elimina a última refeição registada no diário. Usa APENAS quando o utilizador diz explicitamente "elimina a última", "apaga a última", "remove a última refeição" ou similar. NUNCA usar quando o utilizador descreve comida com palavras como "comi", "almocei", "jantei".',
       parameters: {
